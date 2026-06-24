@@ -1,5 +1,46 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 
+// Fetch Spotify track/playlist info using the public token endpoint (no credentials needed)
+async function getSpotifyToken() {
+  const res = await fetch("https://open.spotify.com/get_access_token?reason=transport&productType=web_player");
+  const data = await res.json();
+  return data.accessToken;
+}
+
+async function resolveSpotify(url) {
+  const token = await getSpotifyToken();
+  const headers = { Authorization: `Bearer ${token}` };
+
+  const trackMatch = url.match(/spotify\.com\/track\/([a-zA-Z0-9]+)/);
+  const playlistMatch = url.match(/spotify\.com\/playlist\/([a-zA-Z0-9]+)/);
+  const albumMatch = url.match(/spotify\.com\/album\/([a-zA-Z0-9]+)/);
+
+  if (trackMatch) {
+    const data = await fetch(`https://api.spotify.com/v1/tracks/${trackMatch[1]}`, { headers }).then(r => r.json());
+    const name = data.name;
+    const artist = data.artists?.[0]?.name || "";
+    return { type: "track", tracks: [{ query: `${artist} ${name}`, title: name, artist }] };
+  }
+
+  if (playlistMatch) {
+    const data = await fetch(`https://api.spotify.com/v1/playlists/${playlistMatch[1]}?fields=name,tracks.items(track(name,artists))`, { headers }).then(r => r.json());
+    const tracks = (data.tracks?.items || [])
+      .map(i => i.track)
+      .filter(Boolean)
+      .map(t => ({ query: `${t.artists?.[0]?.name || ""} ${t.name}`, title: t.name, artist: t.artists?.[0]?.name || "" }));
+    return { type: "playlist", name: data.name, tracks };
+  }
+
+  if (albumMatch) {
+    const data = await fetch(`https://api.spotify.com/v1/albums/${albumMatch[1]}?market=US`, { headers }).then(r => r.json());
+    const tracks = (data.tracks?.items || [])
+      .map(t => ({ query: `${t.artists?.[0]?.name || ""} ${t.name}`, title: t.name, artist: t.artists?.[0]?.name || "" }));
+    return { type: "playlist", name: data.name, tracks };
+  }
+
+  return null;
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("play")
@@ -35,28 +76,102 @@ module.exports = {
     if (!player.connected) {
       await player.connect();
       console.log(`[Play] Connected to voice for guild ${interaction.guildId} (new=${isNew})`);
-      if (isNew) {
-        await new Promise((r) => setTimeout(r, 1000));
-      }
+      if (isNew) await new Promise((r) => setTimeout(r, 1000));
     }
 
     const query = interaction.options.getString("query");
+    const isSpotify = /spotify\.com\/(track|playlist|album)\//.test(query);
     const isUrl = /^https?:\/\//.test(query);
-    const searchSource = isUrl ? undefined : "ytmsearch";
 
-    console.log(`[Play] Searching: "${query}" source=${searchSource || "auto"}`);
+    // ── Spotify: resolve metadata → search YTM for each track ────────────────
+    if (isSpotify) {
+      let spotifyData;
+      try {
+        spotifyData = await resolveSpotify(query);
+      } catch (err) {
+        console.error("[Play] Spotify resolve error:", err.message);
+        return interaction.editReply("❌ Failed to fetch Spotify data. Try again later.");
+      }
 
+      if (!spotifyData || !spotifyData.tracks.length)
+        return interaction.editReply("❌ No tracks found in that Spotify link.");
+
+      if (spotifyData.type === "track") {
+        const { query: ytmQuery, title, artist } = spotifyData.tracks[0];
+        console.log(`[Play] Spotify track → YTM search: "${ytmQuery}"`);
+        const res = await player.search({ query: ytmQuery, source: "ytmsearch" }, interaction.user).catch(() => null);
+        if (!res?.tracks?.length) return interaction.editReply(`❌ Couldn't find **${title}** on YouTube Music.`);
+        const track = res.tracks[0];
+        player.queue.add(track);
+        await interaction.editReply({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(0x1db954)
+              .setTitle("Added to Queue (via Spotify)")
+              .setDescription(`**[${track.info.title}](${track.info.uri})**`)
+              .addFields(
+                { name: "Author", value: track.info.author || artist || "Unknown", inline: true },
+                { name: "Duration", value: track.info.isStream ? "🔴 LIVE" : formatDuration(track.info.duration), inline: true }
+              )
+              .setThumbnail(track.info.artworkUrl || ""),
+          ],
+        });
+      } else {
+        // Playlist/album — queue first track immediately, rest in background
+        const { name, tracks } = spotifyData;
+        console.log(`[Play] Spotify ${spotifyData.type} "${name}" → queuing ${tracks.length} tracks via YTM`);
+
+        await interaction.editReply({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(0x1db954)
+              .setTitle("Loading Spotify Playlist...")
+              .setDescription(`Found **${tracks.length}** tracks in **${name}**. Adding to queue...`),
+          ],
+        });
+
+        let added = 0;
+        for (const { query: ytmQuery } of tracks) {
+          try {
+            const res = await player.search({ query: ytmQuery, source: "ytmsearch" }, interaction.user);
+            if (res?.tracks?.[0]) {
+              player.queue.add(res.tracks[0]);
+              added++;
+              // Start playing as soon as first track is queued
+              if (added === 1 && !player.playing && !player.paused) {
+                await player.play().catch(() => {});
+              }
+            }
+          } catch { /* skip failed tracks */ }
+        }
+
+        await interaction.editReply({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(0x1db954)
+              .setTitle("Playlist Added")
+              .setDescription(`Added **${added}/${tracks.length}** tracks from **${name}** to the queue.`),
+          ],
+        });
+        return;
+      }
+
+      if (!player.playing && !player.paused) {
+        await player.play().catch((err) => console.error(`[Play] player.play() error:`, err.message));
+      }
+      return;
+    }
+
+    // ── Normal search / YouTube URL ───────────────────────────────────────────
+    console.log(`[Play] Searching: "${query}" isUrl=${isUrl}`);
     const res = await player
-      .search(isUrl ? { query } : { query, source: searchSource }, interaction.user)
-      .catch((err) => {
-        console.error(`[Play] Search error:`, err.message || err);
-        return null;
-      });
+      .search(isUrl ? { query } : { query, source: "ytmsearch" }, interaction.user)
+      .catch((err) => { console.error(`[Play] Search error:`, err.message); return null; });
 
     console.log(`[Play] Search result: loadType=${res?.loadType}, tracks=${res?.tracks?.length}`);
 
     if (!res || res.loadType === "empty" || res.loadType === "error")
-      return interaction.editReply(`No results found for \`${query}\`.`);
+      return interaction.editReply(`❌ No results found for \`${query}\`.`);
 
     if (res.loadType === "playlist") {
       for (const track of res.tracks) player.queue.add(track);
@@ -65,9 +180,7 @@ module.exports = {
           new EmbedBuilder()
             .setColor(0xff0000)
             .setTitle("Playlist Added")
-            .setDescription(
-              `Added **${res.tracks.length}** tracks from **${res.playlist?.name || "playlist"}** to the queue.`
-            ),
+            .setDescription(`Added **${res.tracks.length}** tracks from **${res.playlist?.name || "playlist"}** to the queue.`),
         ],
       });
     } else {
@@ -81,11 +194,7 @@ module.exports = {
             .setDescription(`**[${track.info.title}](${track.info.uri})**`)
             .addFields(
               { name: "Author", value: track.info.author || "Unknown", inline: true },
-              {
-                name: "Duration",
-                value: track.info.isStream ? "🔴 LIVE" : formatDuration(track.info.duration),
-                inline: true,
-              }
+              { name: "Duration", value: track.info.isStream ? "🔴 LIVE" : formatDuration(track.info.duration), inline: true }
             )
             .setThumbnail(track.info.artworkUrl || ""),
         ],
@@ -94,9 +203,7 @@ module.exports = {
 
     if (!player.playing && !player.paused) {
       console.log(`[Play] Starting playback for guild ${interaction.guildId}`);
-      await player.play().catch((err) =>
-        console.error(`[Play] player.play() error:`, err.message || err)
-      );
+      await player.play().catch((err) => console.error(`[Play] player.play() error:`, err.message));
     }
   },
 };
