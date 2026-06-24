@@ -253,13 +253,17 @@ client.lavalink.on("trackError", async (player, track, payload) => {
 
   const channel = client.channels.cache.get(player.textChannelId);
 
+  // Detect YouTube login-required errors specifically
+  const isLoginError =
+    /sign in|login|requires login|bot|cookie|403/i.test(reason);
+
   const failCount = (client.errorCounts.get(guildId) || 0) + 1;
   client.errorCounts.set(guildId, failCount);
   if (failCount >= 5) {
     client.errorCounts.set(guildId, 0);
     if (channel)
       channel
-        .send("⚠️ 5 tracks in a row failed to play (likely a YouTube auth/cookie issue on the node). Stopping playback — check the bot logs.")
+        .send("⚠️ Too many tracks failed in a row. Stopping playback.")
         .catch(() => {});
     await player.stopPlaying(true).catch(() => {});
     return;
@@ -274,9 +278,23 @@ client.lavalink.on("trackError", async (player, track, payload) => {
 
   if (track && trackKey && !retriedSet.has(trackKey)) {
     retriedSet.add(trackKey);
-    const replacement = await searchReplacementTrack(player, track);
+
+    if (isLoginError) {
+      console.log(`[Lavalink] Login error for "${track.info.title}" — retrying with ytsearch`);
+      if (channel)
+        channel
+          .send(`⚠️ **${track.info.title}** is blocked — retrying with a different YouTube source...`)
+          .catch(() => {});
+    }
+
+    // For login errors: try SoundCloud first, then YTM with different query
+    // For other errors: try fresh YTM search
+    const replacement = isLoginError
+      ? await searchReplacementTrack(player, track, ["ytsearch", "ytmsearch"])
+      : await searchReplacementTrack(player, track, ["ytmsearch", "ytsearch"]);
+
     if (replacement) {
-      console.log(`[Lavalink] Retrying "${track.info.title}" via fresh search after error.`);
+      console.log(`[Lavalink] Found replacement for "${track.info.title}" via ${replacement.info.sourceName}`);
       player.queue.tracks.unshift(replacement);
       await player.skip(0, false).catch((err) =>
         console.error("[Lavalink] skip-to-retry failed:", err.message)
@@ -287,7 +305,7 @@ client.lavalink.on("trackError", async (player, track, payload) => {
 
   if (channel)
     channel
-      .send(`⚠️ Couldn't play **${track?.info?.title || "that track"}**: ${reason}. Skipping...`)
+      .send(`⚠️ Couldn't play **${track?.info?.title || "that track"}** — skipping.`)
       .catch(() => {});
 
   await player.skip(0, false).catch((err) => {
@@ -296,24 +314,31 @@ client.lavalink.on("trackError", async (player, track, payload) => {
   });
 });
 
-async function searchReplacementTrack(player, failedTrack) {
-  try {
-    const query = `${failedTrack.info.title} ${failedTrack.info.author || ""}`.trim();
-    const res = await player.search(
-      { query, source: "ytmsearch" },
-      failedTrack.requester
-    );
-    if (!res?.tracks?.length) return null;
-    const targetDuration = failedTrack.info.duration || 0;
-    return (
-      res.tracks.find(
-        (t) => Math.abs((t.info.duration || 0) - targetDuration) < 5000
-      ) || res.tracks[0]
-    );
-  } catch (err) {
-    console.error("[Lavalink] searchReplacementTrack failed:", err.message);
-    return null;
+// Search for a replacement track across multiple sources in order
+async function searchReplacementTrack(player, failedTrack, sources = ["ytmsearch", "ytsearch"]) {
+  const query = `${failedTrack.info.title} ${failedTrack.info.author || ""}`.trim();
+  const targetDuration = failedTrack.info.duration || 0;
+
+  for (const source of sources) {
+    try {
+      console.log(`[Lavalink] Searching replacement on ${source}: "${query}"`);
+      const res = await player.search(
+        { query, source },
+        failedTrack.requester
+      );
+      if (!res?.tracks?.length) continue;
+
+      // Prefer a track with similar duration (within 5 seconds)
+      const match =
+        res.tracks.find((t) => Math.abs((t.info.duration || 0) - targetDuration) < 5000)
+        || res.tracks[0];
+
+      if (match) return match;
+    } catch (err) {
+      console.error(`[Lavalink] searchReplacementTrack failed on ${source}:`, err.message);
+    }
   }
+  return null;
 }
 
 client.lavalink.on("trackStuck", (player, track) => {
