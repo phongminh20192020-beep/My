@@ -37,32 +37,8 @@ client.lavalink = new LavalinkManager({
       retryDelay: 2500,
       requestSignalTimeoutMS: 30000,
       // Buffer & heartbeat tuning
-      heartBeatInterval: 30000,     // ping node every 30s to keep connection alive
-      enablePingOnStatsCheck: true, // verify node is reachable before sending requests
-    },
-    {
-      id: "serenetia",
-      host: "lavalinkv4.serenetia.com",
-      port: 443,
-      authorization: "https://dsc.gg/serenetia-music",
-      secure: true,
-      retryAmount: 20,
-      retryDelay: 2500,
-      requestSignalTimeoutMS: 30000,
-      heartBeatInterval: 30000,
-      enablePingOnStatsCheck: true,
-    },
-    {
-      id: "custom",
-      host: process.env.LAVALINK_HOST,
-      port: parseInt(process.env.LAVALINK_PORT, 10),
-      authorization: process.env.LAVALINK_PASS,
-      secure: false,
-      retryAmount: 10,
-      retryDelay: 5000,
-      requestSignalTimeoutMS: 30000,
-      heartBeatInterval: 30000,
-      enablePingOnStatsCheck: true,
+      heartBeatInterval: 30000,     
+      enablePingOnStatsCheck: true, 
     },
   ],
   sendToShard: (guildId, payload) => {
