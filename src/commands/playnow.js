@@ -1,45 +1,13 @@
+"use strict";
+
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
-
-async function getSpotifyToken() {
-  const creds = Buffer.from(
-    `${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`
-  ).toString("base64");
-
-  const res = await fetch("https://accounts.spotify.com/api/token", {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${creds}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: "grant_type=client_credentials",
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Spotify token error ${res.status}: ${text.slice(0, 200)}`);
-  }
-
-  const data = await res.json();
-  return data.access_token;
-}
-
-async function resolveSpotifyTrack(url) {
-  const token = await getSpotifyToken();
-  const match = url.match(/spotify\.com\/track\/([a-zA-Z0-9]+)/);
-  if (!match) return null;
-  const res = await fetch(`https://api.spotify.com/v1/tracks/${match[1]}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) throw new Error(`Spotify track fetch failed: ${res.status}`);
-  const data = await res.json();
-  return `${data.artists?.[0]?.name || ""} ${data.name}`.trim();
-}
+const { formatDuration, resolveSpotify } = require("../utils/helpers");
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("playnow")
     .setDescription("Immediately play a track, skipping the current one")
-    .addStringOption((o) =>
+    .addStringOption(o =>
       o.setName("query").setDescription("Song name, YouTube URL, or Spotify track URL").setRequired(true)
     ),
 
@@ -47,8 +15,7 @@ module.exports = {
     await interaction.deferReply();
 
     const voiceChannel = interaction.member.voice?.channel;
-    if (!voiceChannel)
-      return interaction.editReply("You must be in a voice channel.");
+    if (!voiceChannel) return interaction.editReply("You must be in a voice channel.");
 
     const perms = voiceChannel.permissionsFor(interaction.guild.members.me);
     if (!perms.has("Connect") || !perms.has("Speak"))
@@ -59,46 +26,39 @@ module.exports = {
 
     if (!player) {
       player = client.lavalink.createPlayer({
-        guildId: interaction.guildId,
+        guildId:        interaction.guildId,
         voiceChannelId: voiceChannel.id,
-        textChannelId: interaction.channelId,
-        selfDeaf: true,
+        textChannelId:  interaction.channelId,
+        selfDeaf:  true,
         selfMute: false,
       });
     }
 
     if (!player.connected) {
       await player.connect();
-      if (isNew) await new Promise((r) => setTimeout(r, 1000));
+      if (isNew) await new Promise(r => setTimeout(r, 1000));
     }
 
-    let query = interaction.options.getString("query");
+    let query           = interaction.options.getString("query");
     const isSpotifyTrack = /spotify\.com\/track\//.test(query);
-    const isUrl = /^https?:\/\//.test(query);
+    const isUrl         = /^https?:\/\//.test(query);
 
     if (isSpotifyTrack) {
-      if (!process.env.SPOTIFY_CLIENT_ID || !process.env.SPOTIFY_CLIENT_SECRET) {
-        return interaction.editReply("❌ Spotify credentials are not configured. Set `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` in your environment.");
-      }
+      if (!process.env.SPOTIFY_CLIENT_ID || !process.env.SPOTIFY_CLIENT_SECRET)
+        return interaction.editReply("❌ Spotify credentials are not configured.");
       try {
-        const resolved = await resolveSpotifyTrack(query);
-        if (!resolved) return interaction.editReply("❌ Couldn't resolve that Spotify track.");
-        console.log(`[PlayNow] Spotify → YTM search: "${resolved}"`);
-        query = resolved;
+        const data = await resolveSpotify(query);
+        if (!data?.tracks?.[0]) return interaction.editReply("❌ Couldn't resolve that Spotify track.");
+        query = data.tracks[0].query;
       } catch (err) {
         console.error("[PlayNow] Spotify resolve error:", err.message);
         return interaction.editReply("❌ Failed to fetch Spotify data. Try again later.");
       }
     }
 
-    const searchPayload = isUrl && !isSpotifyTrack
-      ? { query }
-      : { query, source: "ytmsearch" };
-
-    console.log(`[PlayNow] Searching: "${query}"`);
     const res = await player
-      .search(searchPayload, interaction.user)
-      .catch((err) => { console.error("[PlayNow] Search error:", err.message); return null; });
+      .search(isUrl && !isSpotifyTrack ? { query } : { query, source: "ytmsearch" }, interaction.user)
+      .catch(err => { console.error("[PlayNow] search error:", err.message); return null; });
 
     if (!res?.tracks?.length || res.loadType === "empty" || res.loadType === "error")
       return interaction.editReply("❌ No results found.");
@@ -107,40 +67,21 @@ module.exports = {
     player.queue.tracks.unshift(track);
 
     if (player.playing || player.paused) {
-      await player.skip(0, false).catch((err) =>
-        console.error("[PlayNow] skip failed:", err.message)
-      );
+      await player.skip(0, false).catch(err => console.error("[PlayNow] skip failed:", err.message));
     } else {
-      await player.play().catch((err) =>
-        console.error("[PlayNow] play failed:", err.message)
-      );
+      await player.play().catch(err => console.error("[PlayNow] play failed:", err.message));
     }
 
     await interaction.editReply({
-      embeds: [
-        new EmbedBuilder()
-          .setColor(0xff0000)
-          .setTitle("▶ Playing Now")
-          .setDescription(`**[${track.info.title}](${track.info.uri})**`)
-          .addFields(
-            { name: "Author", value: track.info.author || "Unknown", inline: true },
-            {
-              name: "Duration",
-              value: track.info.isStream ? "🔴 LIVE" : formatDuration(track.info.duration),
-              inline: true,
-            }
-          )
-          .setThumbnail(track.info.artworkUrl || ""),
-      ],
+      embeds: [new EmbedBuilder()
+        .setColor(0xff0000)
+        .setTitle("▶ Playing Now")
+        .setDescription(`**[${track.info.title}](${track.info.uri})**`)
+        .addFields(
+          { name: "Author",   value: track.info.author || "Unknown", inline: true },
+          { name: "Duration", value: track.info.isStream ? "🔴 LIVE" : formatDuration(track.info.duration), inline: true }
+        )
+        .setThumbnail(track.info.artworkUrl || "")],
     });
   },
 };
-
-function formatDuration(ms) {
-  const s = Math.floor(ms / 1000);
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
-  return `${m}:${String(sec).padStart(2, "0")}`;
-}
