@@ -1,3 +1,7 @@
+"use strict";
+
+const { clearVoiceStatus } = require("../utils/helpers");
+
 module.exports = {
   name: "voiceStateUpdate",
   once: false,
@@ -5,37 +9,28 @@ module.exports = {
     const player = client.lavalink.getPlayer(oldState.guild.id);
     if (!player) return;
 
-    // Bot was disconnected from channel — clean up status and destroy player
+    // Bot was forcibly disconnected — clean up
     if (oldState.id === client.user.id && !newState.channelId) {
-      if (player.voiceChannelId) {
-        await client.rest.patch(`/channels/${player.voiceChannelId}`, {
-          body: { status: "" },
-        }).catch(() => {});
-      }
+      await clearVoiceStatus(client, player.voiceChannelId);
       await player.destroy();
       return;
     }
 
-    // Auto-leave if all humans leave
+    // Auto-leave after 30s if all humans leave
     const voiceChannel = oldState.guild.channels.cache.get(player.voiceChannelId);
     if (!voiceChannel) return;
-    const humans = voiceChannel.members.filter((m) => !m.user.bot);
-    if (humans.size === 0) {
-      setTimeout(async () => {
-        const p = client.lavalink.getPlayer(oldState.guild.id);
-        if (!p) return;
-        const vc = oldState.guild.channels.cache.get(p.voiceChannelId);
-        if (!vc) return;
-        if (vc.members.filter((m) => !m.user.bot).size === 0) {
-          // Clear status before leaving
-          await client.rest.put(`/channels/${p.voiceChannelId}/voice-status`, {
-            body: { status: "" },
-          }).catch(() => {});
-          await p.destroy();
-          const ch = client.channels.cache.get(p.textChannelId);
-          if (ch) ch.send("Left due to inactivity.");
-        }
-      }, 30000);
-    }
+    if (voiceChannel.members.filter(m => !m.user.bot).size > 0) return;
+
+    setTimeout(async () => {
+      const p  = client.lavalink.getPlayer(oldState.guild.id);
+      if (!p) return;
+      const vc = oldState.guild.channels.cache.get(p.voiceChannelId);
+      if (!vc || vc.members.filter(m => !m.user.bot).size > 0) return;
+
+      await clearVoiceStatus(client, p.voiceChannelId);
+      await p.destroy();
+      client.channels.cache.get(p.textChannelId)
+        ?.send("Left the voice channel due to inactivity.").catch(() => {});
+    }, 30_000);
   },
 };
