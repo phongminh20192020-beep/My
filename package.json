@@ -1,0 +1,17 @@
+{
+  "name": "@workspace/discord-bot",
+  "version": "0.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "dev": "node -r dotenv/config src/index.js",
+    "start": "node -r dotenv/config src/index.js",
+    "register": "node -r dotenv/config src/register.js"
+  },
+  "dependencies": {
+    "@google/genai": "^2.9.0",
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.7",
+    "lavalink-client": "^2.4.3"
+  }
+}
