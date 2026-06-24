@@ -1,3 +1,5 @@
+"use strict";
+
 const { SlashCommandBuilder } = require("discord.js");
 
 module.exports = {
@@ -9,8 +11,7 @@ module.exports = {
     await interaction.deferReply();
 
     const voiceChannel = interaction.member.voice?.channel;
-    if (!voiceChannel)
-      return interaction.editReply("You must be in a voice channel.");
+    if (!voiceChannel) return interaction.editReply("You must be in a voice channel.");
 
     const perms = voiceChannel.permissionsFor(interaction.guild.members.me);
     if (!perms.has("Connect") || !perms.has("Speak"))
@@ -19,10 +20,10 @@ module.exports = {
     let player = client.lavalink.getPlayer(interaction.guildId);
     if (!player) {
       player = client.lavalink.createPlayer({
-        guildId: interaction.guildId,
+        guildId:        interaction.guildId,
         voiceChannelId: voiceChannel.id,
-        textChannelId: interaction.channelId,
-        selfDeaf: true,
+        textChannelId:  interaction.channelId,
+        selfDeaf:  true,
         selfMute: false,
       });
     }
