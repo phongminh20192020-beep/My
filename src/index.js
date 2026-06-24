@@ -28,10 +28,10 @@ for (const file of commandFiles) {
 client.lavalink = new LavalinkManager({
   nodes: [
     {
-      id: "jirayu",
-      host: "lavalink.jirayu.net",
-      port: 13592,
-      authorization: "youshallnotpass",
+      id: "main",
+      host: process.env.LAVALINK_HOST || "lavalink",
+      port: parseInt(process.env.LAVALINK_PORT || "2333"),
+      authorization: process.env.LAVALINK_PASS || "youshallnotpass",
       secure: false,
       retryAmount: 20,
       retryDelay: 2500,
