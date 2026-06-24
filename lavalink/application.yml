@@ -1,11 +1,3 @@
-# Railway deployment notes:
-# - This file's values are local-dev defaults. On Railway, override the
-#   sensitive/environment-specific ones via service Variables instead of
-#   editing this file -- Lavalink (Spring Boot) reads matching environment
-#   variables and they take precedence over what's written here:
-#     SERVER_PORT                -> server.port
-#     LAVALINK_SERVER_PASSWORD   -> lavalink.server.password
-# - See ../RAILWAY.md for the full setup walkthrough.
 server:
   port: 2333
   address: 0.0.0.0
@@ -55,18 +47,17 @@ plugins:
     allowDirectVideoIds: true
     allowDirectPlaylistIds: true
     clients:
+      # MUSIC client is cookie-authenticated and most reliable for playback
+      # ANDROID_VR is good fallback - less likely to get bot-checked
+      # WEB is last because it's most likely to hit "sign in" bot checks
       - MUSIC
-      - WEB
-      - MWEB
-      - WEBEMBEDDED
       - ANDROID_VR
       - TVHTML5_SIMPLY
-    # OAuth DISABLED — using cookie login instead.
-    # To switch to OAuth: set enabled: true, remove cookiePath below,
-    # then follow the device-flow instructions in the logs.
+      - MWEB
+      - WEBEMBEDDED
+      - WEB
     oauth:
       enabled: false
-    # Cookie-based login — cookies.txt is baked into the Docker image.
     pot:
       cookiePath: "/opt/Lavalink/cookies.txt"
   lavasrc:
