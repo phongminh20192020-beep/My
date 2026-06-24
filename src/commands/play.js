@@ -1,10 +1,28 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 
-// Fetch Spotify track/playlist info using the public token endpoint (no credentials needed)
+// Uses your real Spotify API credentials (from env vars) instead of the
+// unreliable public token endpoint that returns HTML errors when rate-limited.
 async function getSpotifyToken() {
-  const res = await fetch("https://open.spotify.com/get_access_token?reason=transport&productType=web_player");
+  const creds = Buffer.from(
+    `${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`
+  ).toString("base64");
+
+  const res = await fetch("https://accounts.spotify.com/api/token", {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${creds}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: "grant_type=client_credentials",
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Spotify token error ${res.status}: ${text.slice(0, 200)}`);
+  }
+
   const data = await res.json();
-  return data.accessToken;
+  return data.access_token;
 }
 
 async function resolveSpotify(url) {
@@ -16,25 +34,44 @@ async function resolveSpotify(url) {
   const albumMatch = url.match(/spotify\.com\/album\/([a-zA-Z0-9]+)/);
 
   if (trackMatch) {
-    const data = await fetch(`https://api.spotify.com/v1/tracks/${trackMatch[1]}`, { headers }).then(r => r.json());
+    const res = await fetch(`https://api.spotify.com/v1/tracks/${trackMatch[1]}`, { headers });
+    if (!res.ok) throw new Error(`Spotify track fetch failed: ${res.status}`);
+    const data = await res.json();
     const name = data.name;
     const artist = data.artists?.[0]?.name || "";
     return { type: "track", tracks: [{ query: `${artist} ${name}`, title: name, artist }] };
   }
 
   if (playlistMatch) {
-    const data = await fetch(`https://api.spotify.com/v1/playlists/${playlistMatch[1]}?fields=name,tracks.items(track(name,artists))`, { headers }).then(r => r.json());
+    const res = await fetch(
+      `https://api.spotify.com/v1/playlists/${playlistMatch[1]}?fields=name,tracks.items(track(name,artists))`,
+      { headers }
+    );
+    if (!res.ok) throw new Error(`Spotify playlist fetch failed: ${res.status}`);
+    const data = await res.json();
     const tracks = (data.tracks?.items || [])
-      .map(i => i.track)
+      .map((i) => i.track)
       .filter(Boolean)
-      .map(t => ({ query: `${t.artists?.[0]?.name || ""} ${t.name}`, title: t.name, artist: t.artists?.[0]?.name || "" }));
+      .map((t) => ({
+        query: `${t.artists?.[0]?.name || ""} ${t.name}`,
+        title: t.name,
+        artist: t.artists?.[0]?.name || "",
+      }));
     return { type: "playlist", name: data.name, tracks };
   }
 
   if (albumMatch) {
-    const data = await fetch(`https://api.spotify.com/v1/albums/${albumMatch[1]}?market=US`, { headers }).then(r => r.json());
-    const tracks = (data.tracks?.items || [])
-      .map(t => ({ query: `${t.artists?.[0]?.name || ""} ${t.name}`, title: t.name, artist: t.artists?.[0]?.name || "" }));
+    const res = await fetch(
+      `https://api.spotify.com/v1/albums/${albumMatch[1]}?market=US`,
+      { headers }
+    );
+    if (!res.ok) throw new Error(`Spotify album fetch failed: ${res.status}`);
+    const data = await res.json();
+    const tracks = (data.tracks?.items || []).map((t) => ({
+      query: `${t.artists?.[0]?.name || ""} ${t.name}`,
+      title: t.name,
+      artist: t.artists?.[0]?.name || "",
+    }));
     return { type: "playlist", name: data.name, tracks };
   }
 
@@ -85,6 +122,10 @@ module.exports = {
 
     // ── Spotify: resolve metadata → search YTM for each track ────────────────
     if (isSpotify) {
+      if (!process.env.SPOTIFY_CLIENT_ID || !process.env.SPOTIFY_CLIENT_SECRET) {
+        return interaction.editReply("❌ Spotify credentials are not configured. Set `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` in your environment.");
+      }
+
       let spotifyData;
       try {
         spotifyData = await resolveSpotify(query);
@@ -117,7 +158,6 @@ module.exports = {
           ],
         });
       } else {
-        // Playlist/album — queue first track immediately, rest in background
         const { name, tracks } = spotifyData;
         console.log(`[Play] Spotify ${spotifyData.type} "${name}" → queuing ${tracks.length} tracks via YTM`);
 
@@ -137,7 +177,6 @@ module.exports = {
             if (res?.tracks?.[0]) {
               player.queue.add(res.tracks[0]);
               added++;
-              // Start playing as soon as first track is queued
               if (added === 1 && !player.playing && !player.paused) {
                 await player.play().catch(() => {});
               }
