@@ -1,17 +1,37 @@
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
 
 async function getSpotifyToken() {
-  const res = await fetch("https://open.spotify.com/get_access_token?reason=transport&productType=web_player");
+  const creds = Buffer.from(
+    `${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`
+  ).toString("base64");
+
+  const res = await fetch("https://accounts.spotify.com/api/token", {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${creds}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: "grant_type=client_credentials",
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Spotify token error ${res.status}: ${text.slice(0, 200)}`);
+  }
+
   const data = await res.json();
-  return data.accessToken;
+  return data.access_token;
 }
 
 async function resolveSpotifyTrack(url) {
   const token = await getSpotifyToken();
-  const headers = { Authorization: `Bearer ${token}` };
   const match = url.match(/spotify\.com\/track\/([a-zA-Z0-9]+)/);
   if (!match) return null;
-  const data = await fetch(`https://api.spotify.com/v1/tracks/${match[1]}`, { headers }).then(r => r.json());
+  const res = await fetch(`https://api.spotify.com/v1/tracks/${match[1]}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Spotify track fetch failed: ${res.status}`);
+  const data = await res.json();
   return `${data.artists?.[0]?.name || ""} ${data.name}`.trim();
 }
 
@@ -56,8 +76,10 @@ module.exports = {
     const isSpotifyTrack = /spotify\.com\/track\//.test(query);
     const isUrl = /^https?:\/\//.test(query);
 
-    // Spotify track → resolve to "artist name" for YTM search
     if (isSpotifyTrack) {
+      if (!process.env.SPOTIFY_CLIENT_ID || !process.env.SPOTIFY_CLIENT_SECRET) {
+        return interaction.editReply("❌ Spotify credentials are not configured. Set `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` in your environment.");
+      }
       try {
         const resolved = await resolveSpotifyTrack(query);
         if (!resolved) return interaction.editReply("❌ Couldn't resolve that Spotify track.");
@@ -82,8 +104,6 @@ module.exports = {
       return interaction.editReply("❌ No results found.");
 
     const track = res.tracks[0];
-
-    // Insert at front of queue and skip current track
     player.queue.tracks.unshift(track);
 
     if (player.playing || player.paused) {
