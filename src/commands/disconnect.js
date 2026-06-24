@@ -1,4 +1,7 @@
+"use strict";
+
 const { SlashCommandBuilder } = require("discord.js");
+const { clearVoiceStatus } = require("../utils/helpers");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -12,13 +15,7 @@ module.exports = {
     if (!player || !player.connected)
       return interaction.editReply("I'm not in a voice channel.");
 
-    // Clear voice channel status before destroying
-    if (player.voiceChannelId) {
-      await client.rest.put(`/channels/${player.voiceChannelId}/voice-status`, {
-        body: { status: "" },
-      }).catch(() => {});
-    }
-
+    await clearVoiceStatus(client, player.voiceChannelId);
     await player.destroy();
     await interaction.editReply("Disconnected and cleared the queue ✅");
   },
