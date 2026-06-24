@@ -26,30 +26,37 @@ function progressBar(position, duration, length = 20) {
 }
 
 /**
- * Get a Spotify access token using client credentials (reliable, no rate limit issues)
+ * Get a Spotify anonymous access token (same one the web player uses — no credentials needed)
  */
+let _spotifyTokenCache = null;
+
 async function getSpotifyToken() {
-  const { SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET } = process.env;
-  if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET)
-    throw new Error("SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET not set");
-
-  const creds = Buffer.from(`${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`).toString("base64");
-  const res = await fetch("https://accounts.spotify.com/api/token", {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${creds}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: "grant_type=client_credentials",
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Spotify token request failed (${res.status}): ${text.slice(0, 200)}`);
+  // Reuse cached token if still valid
+  if (_spotifyTokenCache && _spotifyTokenCache.expiresAt > Date.now() + 60_000) {
+    return _spotifyTokenCache.token;
   }
 
+  const res = await fetch(
+    "https://open.spotify.com/get_access_token?reason=transport&productType=web_player",
+    {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "application/json",
+      },
+    }
+  );
+
+  if (!res.ok) throw new Error(`Spotify anonymous token failed (${res.status})`);
+
   const data = await res.json();
-  return data.access_token;
+  if (!data.accessToken) throw new Error("Spotify returned no accessToken");
+
+  _spotifyTokenCache = {
+    token: data.accessToken,
+    expiresAt: data.accessTokenExpirationTimestampMs || (Date.now() + 3_600_000),
+  };
+
+  return data.accessToken;
 }
 
 /**
@@ -60,9 +67,9 @@ async function resolveSpotify(url) {
   const token = await getSpotifyToken();
   const headers = { Authorization: `Bearer ${token}` };
 
-  const trackMatch   = url.match(/spotify\.com\/track\/([a-zA-Z0-9]+)/);
+  const trackMatch    = url.match(/spotify\.com\/track\/([a-zA-Z0-9]+)/);
   const playlistMatch = url.match(/spotify\.com\/playlist\/([a-zA-Z0-9]+)/);
-  const albumMatch   = url.match(/spotify\.com\/album\/([a-zA-Z0-9]+)/);
+  const albumMatch    = url.match(/spotify\.com\/album\/([a-zA-Z0-9]+)/);
 
   if (trackMatch) {
     const res = await fetch(`https://api.spotify.com/v1/tracks/${trackMatch[1]}`, { headers });
@@ -111,7 +118,7 @@ async function resolveSpotify(url) {
 }
 
 /**
- * Clear the voice channel status (the little text shown under channel name)
+ * Clear the voice channel status
  */
 async function clearVoiceStatus(client, channelId) {
   if (!channelId) return;
