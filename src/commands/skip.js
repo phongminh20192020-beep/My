@@ -1,3 +1,5 @@
+"use strict";
+
 const { SlashCommandBuilder } = require("discord.js");
 
 module.exports = {
@@ -14,6 +16,6 @@ module.exports = {
 
     const current = player.queue.current;
     await player.skip();
-    await interaction.editReply(`Skipped **${current?.info?.title || "the current track"}**.`);
+    await interaction.editReply(`Skipped **${current?.info?.title || "the current track"}** ⏭`);
   },
 };
