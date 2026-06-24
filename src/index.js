@@ -39,30 +39,7 @@ client.lavalink = new LavalinkManager({
       heartBeatInterval: 30000,
       enablePingOnStatsCheck: true,
     },
-    {
-      id: "lavalink4",
-      host: "lavalink.darrennathanael.com",
-      port: 443,
-      authorization: "ChangeMe",
-      secure: true,
-      retryAmount: 20,
-      retryDelay: 2500,
-      requestSignalTimeoutMS: 30000,
-      heartBeatInterval: 30000,
-      enablePingOnStatsCheck: true,
-    },
-    {
-      id: "freelink",
-      host: "freelink.golano.es",
-      port: 443,
-      authorization: "golano",
-      secure: true,
-      retryAmount: 20,
-      retryDelay: 2500,
-      requestSignalTimeoutMS: 30000,
-      heartBeatInterval: 30000,
-      enablePingOnStatsCheck: true,
-    },
+
   ],
   sendToShard: (guildId, payload) => {
     const guild = client.guilds.cache.get(guildId);
