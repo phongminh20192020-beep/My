@@ -1,6 +1,36 @@
 # Netscape HTTP Cookie File
 # https://curl.haxx.se/rfc/cookie_spec.html
 # This is a generated file! Do not edit.
+#
+# =============================================================================
+# HOW TO GET FRESH COOKIES (do this when login fails):
+# =============================================================================
+# 1. Install the browser extension "Get cookies.txt LOCALLY" (Chrome/Firefox)
+# 2. Go to https://www.youtube.com and make sure you're signed in
+#    (use a BURNER account, not your main Google account)
+# 3. Click the extension -> Export cookies for this tab
+# 4. Copy EVERYTHING it gives you and paste below, replacing ALL existing content
+# 5. IMPORTANT: Make sure these cookies are present:
+#    - VISITOR_DATA
+#    - LOGIN_INFO
+#    - SID, HSID, SSID, APISID, SAPISID
+#    - __Secure-1PSID, __Secure-3PSID
+#    - __Secure-1PSIDTS, __Secure-3PSIDTS
+#
+# =============================================================================
+# REQUIRED FOR POT (Proof of Origin Token) - prevents bot checks:
+# =============================================================================
+# The youtube-plugin uses the VISITOR_DATA cookie to generate POT tokens.
+# If you don't see VISITOR_DATA in your exported cookies, try:
+#   - Clearing YouTube cookies and signing in again
+#   - Using a different browser
+#   - Visiting youtube.com while signed in, then exporting again
+#
+# Paste your real cookies below this line (replace everything below):
+# =============================================================================
+# Netscape HTTP Cookie File
+# https://curl.haxx.se/rfc/cookie_spec.html
+# This is a generated file! Do not edit.
 
 .youtube.com	TRUE	/	TRUE	1791277207	__Secure-BUCKET	CMwG
 .youtube.com	TRUE	/	TRUE	1810285208	LOGIN_INFO	AFmmF2swRQIgPS3N_cGBJDTbAvCU_WjC5n5iy_Vn1phmSlrxqIm5whsCIQCUZDsCT4eIqToQTzxCdsj3b37fobD5CJezbCCXJb7U3g:QUQ3MjNmd29IMWlGWmI4SF9ZOWZxTm1sUzVzLVZ4Yi1RZGRYYmlaTmVYRDg0UFozeUJKQnFMZzU2RmV3NzR6TmJoUlJ4b1ZhZGEzMXdPdmNwVDEwaWpsdE9jdVFLeWUtaEU4OFdYMmw1bmtFNHdMZlIxMEFKcEZzd2xNZVlkTlQyREJZYmpMdDdLdU16X3kxbFpoeFRxR3psYVBWUW1QTDJB
