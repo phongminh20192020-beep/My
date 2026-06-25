@@ -65,23 +65,42 @@ client.lavalink = new LavalinkManager({
   },
 });
 
+// ─── Push YouTube OAuth token to node via REST ────────────────────────────────
+async function pushYouTubeOAuth(node) {
+  const token = process.env.YOUTUBE_REFRESH_TOKEN;
+  if (!token) {
+    console.warn(`[Lavalink] YOUTUBE_REFRESH_TOKEN not set — YouTube may fail with login errors.`);
+    return;
+  }
+  try {
+    const protocol = node.options.secure ? "https" : "http";
+    const base     = `${protocol}://${node.options.host}:${node.options.port}`;
+
+    const res = await fetch(`${base}/youtube`, {
+      method:  "POST",
+      headers: {
+        "Authorization": node.options.authorization,
+        "Content-Type":  "application/json",
+      },
+      body: JSON.stringify({ refreshToken: token }),
+    });
+
+    if (res.ok) {
+      console.log(`[Lavalink] YouTube OAuth token pushed to node "${node.id}" ✅`);
+    } else {
+      const text = await res.text();
+      console.error(`[Lavalink] Failed to push YouTube OAuth token: ${res.status} ${text}`);
+    }
+  } catch (err) {
+    console.error(`[Lavalink] Failed to push YouTube OAuth token:`, err.message);
+  }
+}
+
 // ─── Lavalink node events ─────────────────────────────────────────────────────
 client.lavalink.nodeManager
   .on("connect", async (node) => {
     console.log(`[Lavalink] Node "${node.id}" connected ✅`);
-
-    // Push YouTube OAuth refresh token so the node can bypass login errors
-    const token = process.env.YOUTUBE_REFRESH_TOKEN;
-    if (!token) {
-      console.warn(`[Lavalink] YOUTUBE_REFRESH_TOKEN is not set — YouTube may fail with login errors.`);
-      return;
-    }
-    try {
-      await node.updateYoutubeConfig(token);
-      console.log(`[Lavalink] YouTube OAuth token pushed to node "${node.id}" ✅`);
-    } catch (err) {
-      console.error(`[Lavalink] Failed to push YouTube OAuth token:`, err.message);
-    }
+    await pushYouTubeOAuth(node);
   })
   .on("error",        (node, err)    => console.error(`[Lavalink] Node "${node.id}" error:`, err.message))
   .on("disconnect",   (node, reason) => console.warn(`[Lavalink] Node "${node.id}" disconnected:`, JSON.stringify(reason)))
