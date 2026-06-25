@@ -67,7 +67,22 @@ client.lavalink = new LavalinkManager({
 
 // ─── Lavalink node events ─────────────────────────────────────────────────────
 client.lavalink.nodeManager
-  .on("connect",      (node)         => console.log(`[Lavalink] Node "${node.id}" connected ✅`))
+  .on("connect", async (node) => {
+    console.log(`[Lavalink] Node "${node.id}" connected ✅`);
+
+    // Push YouTube OAuth refresh token so the node can bypass login errors
+    const token = process.env.YOUTUBE_REFRESH_TOKEN;
+    if (!token) {
+      console.warn(`[Lavalink] YOUTUBE_REFRESH_TOKEN is not set — YouTube may fail with login errors.`);
+      return;
+    }
+    try {
+      await node.updateYoutubeConfig(token);
+      console.log(`[Lavalink] YouTube OAuth token pushed to node "${node.id}" ✅`);
+    } catch (err) {
+      console.error(`[Lavalink] Failed to push YouTube OAuth token:`, err.message);
+    }
+  })
   .on("error",        (node, err)    => console.error(`[Lavalink] Node "${node.id}" error:`, err.message))
   .on("disconnect",   (node, reason) => console.warn(`[Lavalink] Node "${node.id}" disconnected:`, JSON.stringify(reason)))
   .on("reconnecting", (node)         => console.log(`[Lavalink] Node "${node.id}" reconnecting...`));
