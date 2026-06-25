@@ -34,7 +34,7 @@ client.lavalink = new LavalinkManager({
       host:                   process.env.LAVALINK_HOST || "lavalink-2026-production-6db3.up.railway.app",
       port:                   parseInt(process.env.LAVALINK_PORT || "443"),
       authorization:          process.env.LAVALINK_PASS || "Minh@2013",
-      secure:                 true,
+      secure:                 false,
       retryAmount:            20,
       retryDelay:             2500,
       requestSignalTimeoutMS: 30000,
