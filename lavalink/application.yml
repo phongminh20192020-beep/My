@@ -98,7 +98,7 @@ plugins:
     # Uses VISITOR_DATA cookie from cookies.txt
     # ============================================================================
     pot:
-      cookiePath: "/opt/Lavalink/cookies.txt"
+      cookiePath: "/Lavalink/cookies.txt"
       # Alternative: use direct tokens
       # visitorData: ""
       # poToken: ""
