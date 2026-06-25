@@ -11,8 +11,8 @@ module.exports = {
     await interaction.deferReply();
 
     const player = client.lavalink.getPlayer(interaction.guildId);
-    if (!player)         return interaction.editReply("No active player.");
-    if (!player.paused)  return interaction.editReply("Already playing — nothing to resume.");
+    if (!player)        return interaction.editReply("No active player.");
+    if (!player.paused) return interaction.editReply("Already playing — nothing to resume.");
 
     await player.resume();
     await interaction.editReply("Resumed ▶️");
