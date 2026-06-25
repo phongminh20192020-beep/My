@@ -31,8 +31,8 @@ client.lavalink = new LavalinkManager({
   nodes: [
     {
       id:                      "main",
-      host:                    process.env.LAVALINK_HOST || "lavalink.riskyfailure.net",
-      port:                    parseInt(process.env.LAVALINK_PORT || "2333"),
+      host:                    process.env.LAVALINK_HOST || "lavalink-production-914b.up.railway.app",
+      port:                    parseInt(process.env.LAVALINK_PORT || "433"),
       authorization:           process.env.LAVALINK_PASS || "Minh@2013",
       secure:                  false,
       retryAmount:             20,
