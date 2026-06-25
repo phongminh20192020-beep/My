@@ -32,7 +32,7 @@ client.lavalink = new LavalinkManager({
     {
       id:                     "main",
       host:                   process.env.LAVALINK_HOST || "reseau.proxy.rlwy.net",
-      port:                   parseInt(process.env.LAVALINK_PORT || "23948"),
+      port:                   parseInt(process.env.LAVALINK_PORT || "28006"),
       authorization:          process.env.LAVALINK_PASS || "Minh@2013",
       secure:                 false,
       retryAmount:            20,
