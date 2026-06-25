@@ -33,7 +33,7 @@ client.lavalink = new LavalinkManager({
       id:                      "main",
       host:                    process.env.LAVALINK_HOST || "lavalink",
       port:                    parseInt(process.env.LAVALINK_PORT || "2333"),
-      authorization:           process.env.LAVALINK_PASS || "youshallnotpass",
+      authorization:           process.env.LAVALINK_PASS || "Minh@2013",
       secure:                  false,
       retryAmount:             20,
       retryDelay:              2500,
