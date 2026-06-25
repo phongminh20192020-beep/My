@@ -1,3 +1,5 @@
+"use strict";
+
 const {
   SlashCommandBuilder,
   EmbedBuilder,
@@ -6,6 +8,7 @@ const {
   ActionRowBuilder,
   ComponentType,
 } = require("discord.js");
+const { formatDuration } = require("../utils/helpers");
 
 const PAGE_SIZE = 8;
 
@@ -21,40 +24,35 @@ module.exports = {
     if (!player || !player.queue.current)
       return interaction.editReply("Nothing is currently playing.");
 
-    const current = player.queue.current;
-    const tracks = player.queue.tracks;
+    const current    = player.queue.current;
+    const tracks     = player.queue.tracks;
     const totalPages = Math.max(1, Math.ceil(tracks.length / PAGE_SIZE));
-    let page = 0;
+    let   page       = 0;
 
-    const buildUpNextValue = (p) => {
+    const buildUpNextValue = p => {
       const slice = tracks.slice(p * PAGE_SIZE, p * PAGE_SIZE + PAGE_SIZE);
       if (!slice.length) return "Nothing queued.";
 
       let result = "";
       for (let i = 0; i < slice.length; i++) {
-        const t = slice[i];
-        const num = p * PAGE_SIZE + i + 1;
-        const dur = t.info.isStream ? "🔴 LIVE" : formatDuration(t.info.duration);
-        // No hyperlinks in list — just plain bold title, truncated hard at 30 chars
+        const t     = slice[i];
+        const num   = p * PAGE_SIZE + i + 1;
+        const dur   = t.info.isStream ? "🔴 LIVE" : formatDuration(t.info.duration);
         const title = t.info.title.length > 30
           ? t.info.title.slice(0, 29) + "…"
           : t.info.title;
-        const line = `\`${num}.\` **${title}** — ${dur}\n`;
-        // Hard stop before we hit Discord's 1024 field limit
-        if (result.length + line.length > 1000) {
-          result += `*...and more*`;
-          break;
-        }
+        const line  = `\`${num}.\` **${title}** — ${dur}\n`;
+        if (result.length + line.length > 1000) { result += "*...and more*"; break; }
         result += line;
       }
       return result.trim();
     };
 
-    const buildEmbed = (p) => {
+    const buildEmbed = p => {
       const currentTitle = current.info.title.length > 40
         ? current.info.title.slice(0, 39) + "…"
         : current.info.title;
-      const currentDur = current.info.isStream
+      const currentDur   = current.info.isStream
         ? "🔴 LIVE"
         : formatDuration(current.info.duration);
 
@@ -63,18 +61,18 @@ module.exports = {
         .setTitle("Queue")
         .addFields(
           {
-            name: "Now Playing",
+            name:  "Now Playing",
             value: `**[${currentTitle}](${current.info.uri})** — ${currentDur}`,
           },
           {
-            name: `Up Next — ${tracks.length} track${tracks.length !== 1 ? "s" : ""}`,
+            name:  `Up Next — ${tracks.length} track${tracks.length !== 1 ? "s" : ""}`,
             value: buildUpNextValue(p),
           }
         )
         .setFooter({ text: `Page ${p + 1} / ${totalPages}` });
     };
 
-    const buildRow = (p) =>
+    const buildRow = p =>
       new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId("queue_prev")
@@ -89,7 +87,7 @@ module.exports = {
       );
 
     const msg = await interaction.editReply({
-      embeds: [buildEmbed(page)],
+      embeds:     [buildEmbed(page)],
       components: totalPages > 1 ? [buildRow(page)] : [],
     });
 
@@ -97,15 +95,15 @@ module.exports = {
 
     const collector = msg.createMessageComponentCollector({
       componentType: ComponentType.Button,
-      time: 60_000,
-      filter: (btn) => btn.user.id === interaction.user.id,
+      time:          60_000,
+      filter:        btn => btn.user.id === interaction.user.id,
     });
 
-    collector.on("collect", async (btn) => {
+    collector.on("collect", async btn => {
       if (btn.customId === "queue_prev") page = Math.max(0, page - 1);
       if (btn.customId === "queue_next") page = Math.min(totalPages - 1, page + 1);
       await btn.update({
-        embeds: [buildEmbed(page)],
+        embeds:     [buildEmbed(page)],
         components: [buildRow(page)],
       });
     });
@@ -115,12 +113,3 @@ module.exports = {
     });
   },
 };
-
-function formatDuration(ms) {
-  const s = Math.floor(ms / 1000);
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
-  return `${m}:${String(sec).padStart(2, "0")}`;
-}
