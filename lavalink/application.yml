@@ -10,6 +10,7 @@ lavalink:
     - dependency: "com.github.topi314.lavasrc:lavasrc-plugin:4.2.0"
       repository: "https://maven.topi.wtf/releases"
       snapshot: false
+
   server:
     password: "youshallnotpass"
     sources:
@@ -38,6 +39,9 @@ lavalink:
     trackStuckThresholdMs: 10000
     useSeekGhosting: true
     playerUpdateInterval: 5
+    #youtubePlaylistLoadLimit: 6 # Number of pages at 100 each
+    youtubeSearchEnabled: true
+    soundcloudSearchEnabled: true
     gc-warnings: true
 
 plugins:
@@ -46,8 +50,10 @@ plugins:
     allowSearch: true
     allowDirectVideoIds: true
     allowDirectPlaylistIds: true
-    # MUSIC goes first — it uses cookie/OAuth auth and is least likely to be bot-checked.
-    # WEB is last — most likely to hit "Sign in to confirm you're not a bot" on datacenter IPs.
+
+    # Client priority order:
+    # MUSIC goes first -- it uses cookie/OAuth auth and is least likely to be bot-checked.
+    # WEB is last -- most likely to hit "Sign in to confirm you're not a bot" on datacenter IPs.
     clients:
       - MUSIC
       - ANDROID_VR
@@ -55,19 +61,50 @@ plugins:
       - MWEB
       - WEBEMBEDDED
       - WEB
-    # OAuth fixes the "Sign in to confirm you're not a bot" error.
+
+    # ============================================================================
+    # OAUTH CONFIGURATION (Recommended - fixes "Sign in to confirm you're not a bot")
+    # ============================================================================
+    # OAuth is the MOST RELIABLE way to avoid bot checks.
+    #
     # SETUP (one time only):
     #   1. Set enabled: true, leave refreshToken commented out, deploy.
-    #   2. Watch Lavalink logs — it will print a URL + short code.
+    #   2. Watch Lavalink logs -- it will print a URL + short code.
     #   3. Open that URL in any browser, enter the code, approve with a BURNER Google account.
     #   4. Lavalink logs will print a refreshToken. Copy it below.
     #   5. Uncomment refreshToken + skipInitialization, redeploy.
+    #
+    # If you have a refreshToken, uncomment and fill it in:
     oauth:
       enabled: true
-      # refreshToken: "paste_your_token_here"
+      # refreshToken: "YOUR_REFRESH_TOKEN_HERE"
       # skipInitialization: true
+
+    # ============================================================================
+    # PROOF OF ORIGIN TOKEN (POT) CONFIGURATION
+    # ============================================================================
+    # POT tokens help bypass bot detection. You can provide them via:
+    #   A) visitorData + poToken (most reliable)
+    #   B) cookiePath (reads from Netscape cookies.txt)
+    #
+    # Option A: Direct token (recommended for Railway/cloud deployment)
+    #   Get these from your browser's YouTube requests:
+    #   1. Open YouTube in browser, open DevTools (F12) -> Network tab
+    #   2. Find a /player or /watch request
+    #   3. Look for "visitorData" and "poToken" in the request payload
+    #   4. Paste them below and comment out cookiePath
+    #
+    # Option B: Cookie file (used here - reads from /opt/Lavalink/cookies.txt)
+    #   Make sure your cookies.txt contains VISITOR_DATA and PO_TOKEN cookies!
+    #   These are REQUIRED for the pot feature to work.
     pot:
+      # Option A: Uncomment these if you have direct tokens:
+      # visitorData: "YOUR_VISITOR_DATA_HERE"
+      # poToken: "YOUR_PO_TOKEN_HERE"
+
+      # Option B: Cookie file path (must contain VISITOR_DATA cookie!)
       cookiePath: "/opt/Lavalink/cookies.txt"
+
   lavasrc:
     providers:
       - "ytsearch:\"%ISRC%\""
