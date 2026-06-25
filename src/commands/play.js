@@ -1,7 +1,7 @@
 "use strict";
 
 const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
-const { formatDuration, resolveSpotify } = require("../utils/helpers");
+const { formatDuration, resolveSpotify }    = require("../utils/helpers");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -15,13 +15,14 @@ module.exports = {
     await interaction.deferReply();
 
     const voiceChannel = interaction.member.voice?.channel;
-    if (!voiceChannel) return interaction.editReply("You must be in a voice channel.");
+    if (!voiceChannel)
+      return interaction.editReply("You must be in a voice channel.");
 
     const perms = voiceChannel.permissionsFor(interaction.guild.members.me);
     if (!perms.has("Connect") || !perms.has("Speak"))
       return interaction.editReply("I need permission to join and speak in your channel.");
 
-    let player = client.lavalink.getPlayer(interaction.guildId);
+    let player  = client.lavalink.getPlayer(interaction.guildId);
     const isNew = !player;
 
     if (!player) {
@@ -29,8 +30,8 @@ module.exports = {
         guildId:        interaction.guildId,
         voiceChannelId: voiceChannel.id,
         textChannelId:  interaction.channelId,
-        selfDeaf:  true,
-        selfMute: false,
+        selfDeaf:       true,
+        selfMute:       false,
       });
     }
 
@@ -45,12 +46,10 @@ module.exports = {
 
     // ── Spotify ───────────────────────────────────────────────────────────────
     if (isSpotify) {
-      if (!process.env.SPOTIFY_CLIENT_ID || !process.env.SPOTIFY_CLIENT_SECRET)
-        return interaction.editReply("❌ Spotify credentials are not configured (`SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET`).");
-
       let spotifyData;
-      try { spotifyData = await resolveSpotify(query); }
-      catch (err) {
+      try {
+        spotifyData = await resolveSpotify(query);
+      } catch (err) {
         console.error("[Play] Spotify resolve error:", err.message);
         return interaction.editReply("❌ Failed to fetch Spotify data. Try again later.");
       }
@@ -61,32 +60,40 @@ module.exports = {
       // Single track
       if (spotifyData.type === "track") {
         const { query: ytQuery, title, artist } = spotifyData.tracks[0];
-        const res = await player.search({ query: ytQuery, source: "ytmsearch" }, interaction.user).catch(() => null);
-        if (!res?.tracks?.length) return interaction.editReply(`❌ Couldn't find **${title}** on YouTube Music.`);
+        const res = await player
+          .search({ query: ytQuery, source: "ytmsearch" }, interaction.user)
+          .catch(() => null);
+
+        if (!res?.tracks?.length)
+          return interaction.editReply(`❌ Couldn't find **${title}** on YouTube Music.`);
 
         const track = res.tracks[0];
         player.queue.add(track);
 
         await interaction.editReply({
-          embeds: [new EmbedBuilder()
-            .setColor(0x1db954)
-            .setTitle("Added to Queue (via Spotify)")
-            .setDescription(`**[${track.info.title}](${track.info.uri})**`)
-            .addFields(
-              { name: "Author",   value: track.info.author || artist || "Unknown", inline: true },
-              { name: "Duration", value: track.info.isStream ? "🔴 LIVE" : formatDuration(track.info.duration), inline: true }
-            )
-            .setThumbnail(track.info.artworkUrl || "")],
+          embeds: [
+            new EmbedBuilder()
+              .setColor(0x1db954)
+              .setTitle("Added to Queue (via Spotify)")
+              .setDescription(`**[${track.info.title}](${track.info.uri})**`)
+              .addFields(
+                { name: "Author",   value: track.info.author || artist || "Unknown",                                   inline: true },
+                { name: "Duration", value: track.info.isStream ? "🔴 LIVE" : formatDuration(track.info.duration),     inline: true }
+              )
+              .setThumbnail(track.info.artworkUrl || ""),
+          ],
         });
 
       // Playlist / album
       } else {
         const { name, tracks } = spotifyData;
         await interaction.editReply({
-          embeds: [new EmbedBuilder()
-            .setColor(0x1db954)
-            .setTitle("Loading Spotify Playlist...")
-            .setDescription(`Found **${tracks.length}** tracks in **${name}**. Adding to queue...`)],
+          embeds: [
+            new EmbedBuilder()
+              .setColor(0x1db954)
+              .setTitle("Loading Spotify Playlist...")
+              .setDescription(`Found **${tracks.length}** tracks in **${name}**. Adding to queue...`),
+          ],
         });
 
         let added = 0;
@@ -96,20 +103,24 @@ module.exports = {
             if (res?.tracks?.[0]) {
               player.queue.add(res.tracks[0]);
               added++;
-              if (added === 1 && !player.playing && !player.paused) await player.play().catch(() => {});
+              if (added === 1 && !player.playing && !player.paused)
+                await player.play().catch(() => {});
             }
           } catch { /* skip failed tracks */ }
         }
 
         return interaction.editReply({
-          embeds: [new EmbedBuilder()
-            .setColor(0x1db954)
-            .setTitle("Playlist Added")
-            .setDescription(`Added **${added}/${tracks.length}** tracks from **${name}** to the queue.`)],
+          embeds: [
+            new EmbedBuilder()
+              .setColor(0x1db954)
+              .setTitle("Playlist Added")
+              .setDescription(`Added **${added}/${tracks.length}** tracks from **${name}** to the queue.`),
+          ],
         });
       }
 
-      if (!player.playing && !player.paused) await player.play().catch(err => console.error("[Play] play() error:", err.message));
+      if (!player.playing && !player.paused)
+        await player.play().catch(err => console.error("[Play] play() error:", err.message));
       return;
     }
 
@@ -124,27 +135,32 @@ module.exports = {
     if (res.loadType === "playlist") {
       for (const track of res.tracks) player.queue.add(track);
       await interaction.editReply({
-        embeds: [new EmbedBuilder()
-          .setColor(0xff0000)
-          .setTitle("Playlist Added")
-          .setDescription(`Added **${res.tracks.length}** tracks from **${res.playlist?.name || "playlist"}** to the queue.`)],
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xff0000)
+            .setTitle("Playlist Added")
+            .setDescription(`Added **${res.tracks.length}** tracks from **${res.playlist?.name || "playlist"}** to the queue.`),
+        ],
       });
     } else {
       const track = res.tracks[0];
       player.queue.add(track);
       await interaction.editReply({
-        embeds: [new EmbedBuilder()
-          .setColor(0xff0000)
-          .setTitle("Added to Queue")
-          .setDescription(`**[${track.info.title}](${track.info.uri})**`)
-          .addFields(
-            { name: "Author",   value: track.info.author || "Unknown", inline: true },
-            { name: "Duration", value: track.info.isStream ? "🔴 LIVE" : formatDuration(track.info.duration), inline: true }
-          )
-          .setThumbnail(track.info.artworkUrl || "")],
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xff0000)
+            .setTitle("Added to Queue")
+            .setDescription(`**[${track.info.title}](${track.info.uri})**`)
+            .addFields(
+              { name: "Author",   value: track.info.author || "Unknown",                                             inline: true },
+              { name: "Duration", value: track.info.isStream ? "🔴 LIVE" : formatDuration(track.info.duration),     inline: true }
+            )
+            .setThumbnail(track.info.artworkUrl || ""),
+        ],
       });
     }
 
-    if (!player.playing && !player.paused) await player.play().catch(err => console.error("[Play] play() error:", err.message));
+    if (!player.playing && !player.paused)
+      await player.play().catch(err => console.error("[Play] play() error:", err.message));
   },
 };
