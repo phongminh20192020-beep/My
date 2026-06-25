@@ -76,7 +76,7 @@ async function pushYouTubeOAuth(node) {
     const protocol = node.options.secure ? "https" : "http";
     const base     = `${protocol}://${node.options.host}:${node.options.port}`;
 
-    const res = await fetch(`${base}/youtube`, {
+    const res = await fetch(`${base}/youtube/token`, {
       method:  "POST",
       headers: {
         "Authorization": node.options.authorization,
