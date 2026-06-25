@@ -31,9 +31,9 @@ client.lavalink = new LavalinkManager({
   nodes: [
     {
       id:                     "main",
-      host:                   process.env.LAVALINK_HOST || "reseau.proxy.rlwy.net",
-      port:                   parseInt(process.env.LAVALINK_PORT || "41868"),
-      authorization:          process.env.LAVALINK_PASS || "Minh@2013",
+      host:                   process.env.LAVALINK_HOST || "sg1-nodelink.nyxbot.app",
+      port:                   parseInt(process.env.LAVALINK_PORT || "3000"),
+      authorization:          process.env.LAVALINK_PASS || "nyxbot.app/support",
       secure:                 false,
       retryAmount:            20,
       retryDelay:             2500,
