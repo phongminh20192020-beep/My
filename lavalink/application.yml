@@ -4,11 +4,9 @@ server:
 
 lavalink:
   plugins:
-    # YouTube plugin - required for YouTube playback
     - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.1"
       repository: "https://maven.lavalink.dev/releases"
       snapshot: false
-    # LavaSrc plugin - for Spotify/Apple Music support
     - dependency: "com.github.topi314.lavasrc:lavasrc-plugin:4.2.0"
       repository: "https://maven.topi.wtf/releases"
       snapshot: false
@@ -16,7 +14,7 @@ lavalink:
   server:
     password: "youshallnotpass"
     sources:
-      youtube: false          # Handled by youtube-plugin
+      youtube: false
       bandcamp: true
       soundcloud: true
       twitch: true
@@ -52,7 +50,7 @@ plugins:
     allowDirectVideoIds: true
     allowDirectPlaylistIds: true
 
-    # Client priority - MUSIC uses OAuth auth, least likely to be bot-checked
+    # MUSIC client uses OAuth auth and is least likely to trigger bot checks
     clients:
       - MUSIC
       - ANDROID_VR
@@ -62,58 +60,49 @@ plugins:
       - WEB
 
     # ============================================================================
-    # OAUTH CONFIGURATION (Recommended - fixes "Sign in to confirm you're not a bot")
+    # OAUTH CONFIGURATION - Device Code Flow
     # ============================================================================
-    # This is the MOST RELIABLE way to avoid bot checks on YouTube.
+    # This will trigger a device code flow on Lavalink startup.
     #
-    # FIRST-TIME SETUP (one time only):
-    #   1. Make sure enabled is true and refreshToken is commented out (below).
-    #   2. Deploy your bot.
-    #   3. Watch the Lavalink logs - they will print a URL like:
-    #      https://www.google.com/device?user_code=XXXX-XXXX
-    #   4. Open that URL in your browser, enter the code shown.
-    #   5. Sign in with a BURNER Google account (NOT your main account!).
-    #   6. Approve the access when prompted.
-    #   7. Lavalink logs will print a refreshToken - copy it.
-    #   8. Paste the refreshToken below, uncomment it, and set skipInitialization: true.
-    #   9. Redeploy - OAuth will work permanently from now on.
+    # WHAT WILL HAPPEN:
+    #   1. Deploy this config (refreshToken is intentionally commented out)
+    #   2. Lavalink starts up
+    #   3. In the logs, you'll see a message like:
     #
-    # AFTER SETUP (permanent):
-    #   - Keep refreshToken filled in and skipInitialization: true
-    #   - The token lasts indefinitely (unless you revoke it from Google Account settings)
+    #      [YouTube-OAuth] Please open: https://www.google.com/device
+    #      [YouTube-OAuth] Enter code: ABCD-EFGH
+    #
+    #   4. Open https://www.google.com/device in YOUR browser
+    #   5. Enter the code shown in logs
+    #   6. Sign in with a BURNER Google account
+    #   7. Click "Allow" / "Yes, it's me"
+    #   8. Back in Lavalink logs, a refreshToken will appear
+    #   9. Copy that token, paste it below as refreshToken
+    #   10. Uncomment refreshToken and skipInitialization lines
+    #   11. Redeploy - done forever
+    #
+    # IMPORTANT:
+    #   - Use a BURNER Google account, NOT your main account
+    #   - The code expires in 15 minutes - complete it quickly
+    #   - If you miss it, restart Lavalink to get a new code
     # ============================================================================
     oauth:
       enabled: true
-      # --- STEP 1: Leave these commented on first deploy ---
-      # refreshToken: "PASTE_YOUR_REFRESH_TOKEN_HERE_AFTER_SETUP"
+      # --- LEAVE THESE COMMENTED FOR FIRST RUN ---
+      # refreshToken: ""
       # skipInitialization: true
-      # --- STEP 2: After getting token from logs, uncomment above and redeploy ---
+      # --- AFTER YOU GET THE TOKEN FROM LOGS, FILL IN AND REDEPLOY ---
 
     # ============================================================================
-    # POT (Proof of Origin Token) - Secondary bot protection bypass
-    # ============================================================================
-    # OAuth above is the PRIMARY method. POT provides additional protection.
-    # The youtube-plugin reads VISITOR_DATA from your cookies.txt to generate POT.
-    #
-    # Requirements:
-    #   - Your cookies.txt MUST contain a VISITOR_DATA cookie
-    #   - If VISITOR_DATA is missing from your cookies export, try:
-    #     * Clear YouTube cookies and sign in again
-    #     * Use a different browser (Firefox works better)
-    #     * Use a private/incognito window
-    #
-    # Alternative: Use direct tokens (uncomment visitorData + poToken below)
-    #   Get them from browser DevTools -> Network -> /player request payload
+    # POT (Proof of Origin Token) - Additional bot protection bypass
+    # Uses VISITOR_DATA cookie from cookies.txt
     # ============================================================================
     pot:
-      # Option A: Direct tokens (get from browser DevTools)
-      # visitorData: "PASTE_VISITOR_DATA_HERE"
-      # poToken: "PASTE_PO_TOKEN_HERE"
-
-      # Option B: Read from cookie file (default - requires VISITOR_DATA cookie!)
       cookiePath: "/opt/Lavalink/cookies.txt"
+      # Alternative: use direct tokens
+      # visitorData: ""
+      # poToken: ""
 
-  # LavaSrc plugin configuration (Spotify support)
   lavasrc:
     providers:
       - "ytsearch:\"%ISRC%\""
