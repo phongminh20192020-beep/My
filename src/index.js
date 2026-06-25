@@ -16,9 +16,9 @@ const client = new Client({
 });
 
 client.commands      = new Collection();
-client.npIntervals   = new Map(); // guildId → interval handle
-client.errorCounts   = new Map(); // guildId → consecutive error count
-client.retriedTracks = new Map(); // guildId → Set of already-retried track identifiers
+client.npIntervals   = new Map();
+client.errorCounts   = new Map();
+client.retriedTracks = new Map();
 
 // ─── Load commands ────────────────────────────────────────────────────────────
 for (const file of fs.readdirSync(path.join(__dirname, "commands")).filter(f => f.endsWith(".js"))) {
@@ -32,9 +32,9 @@ client.lavalink = new LavalinkManager({
     {
       id:                     "main",
       host:                   process.env.LAVALINK_HOST || "lavalink-production-914b.up.railway.app",
-      port:                   parseInt(process.env.LAVALINK_PORT || "443"),
+      port:                   443,
       authorization:          process.env.LAVALINK_PASS || "Minh@2013",
-      secure:                 true,   // ← WSS/HTTPS enabled
+      secure:                 true,
       retryAmount:            20,
       retryDelay:             2500,
       requestSignalTimeoutMS: 30000,
@@ -182,7 +182,6 @@ client.lavalink
     const channel      = client.channels.cache.get(player.textChannelId);
     const isLoginError = /sign in|login|requires login|bot|cookie|403/i.test(reason);
 
-    // Stop after 5 consecutive errors
     const failCount = (client.errorCounts.get(guildId) || 0) + 1;
     client.errorCounts.set(guildId, failCount);
     if (failCount >= 5) {
@@ -192,7 +191,6 @@ client.lavalink
       return;
     }
 
-    // Retry the track once with a different source
     const trackKey   = track?.info?.identifier || track?.encoded;
     let   retriedSet = client.retriedTracks.get(guildId);
     if (!retriedSet) { retriedSet = new Set(); client.retriedTracks.set(guildId, retriedSet); }
@@ -257,8 +255,6 @@ for (const file of fs.readdirSync(path.join(__dirname, "events")).filter(f => f.
 }
 
 // ─── Forward voice updates to Lavalink ───────────────────────────────────────
-// FIX: Android TV / mobile clients sometimes omit guild_id at the top level
-// of VOICE_STATE_UPDATE. Normalise before forwarding so Lavalink can route correctly.
 client.on("raw", d => {
   if (["VOICE_STATE_UPDATE", "VOICE_SERVER_UPDATE"].includes(d.t)) {
     if (d.d && !d.d.guild_id && d.d.member?.guild_id)
