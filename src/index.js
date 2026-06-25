@@ -15,9 +15,9 @@ const client = new Client({
   ],
 });
 
-client.commands     = new Collection();
-client.npIntervals  = new Map(); // guildId → interval handle
-client.errorCounts  = new Map(); // guildId → consecutive error count
+client.commands      = new Collection();
+client.npIntervals   = new Map(); // guildId → interval handle
+client.errorCounts   = new Map(); // guildId → consecutive error count
 client.retriedTracks = new Map(); // guildId → Set of already-retried track identifiers
 
 // ─── Load commands ────────────────────────────────────────────────────────────
@@ -30,16 +30,16 @@ for (const file of fs.readdirSync(path.join(__dirname, "commands")).filter(f => 
 client.lavalink = new LavalinkManager({
   nodes: [
     {
-      id:                      "main",
-      host:                    process.env.LAVALINK_HOST || "lavalink-production-914b.up.railway.app",
-      port:                    parseInt(process.env.LAVALINK_PORT || "433"),
-      authorization:           process.env.LAVALINK_PASS || "Minh@2013",
-      secure:                  false,
-      retryAmount:             20,
-      retryDelay:              2500,
-      requestSignalTimeoutMS:  30000,
-      heartBeatInterval:       30000,
-      enablePingOnStatsCheck:  true,
+      id:                     "main",
+      host:                   process.env.LAVALINK_HOST || "lavalink-production-914b.up.railway.app",
+      port:                   parseInt(process.env.LAVALINK_PORT || "443"),
+      authorization:          process.env.LAVALINK_PASS || "Minh@2013",
+      secure:                 true,   // ← WSS/HTTPS enabled
+      retryAmount:            20,
+      retryDelay:             2500,
+      requestSignalTimeoutMS: 30000,
+      heartBeatInterval:      30000,
+      enablePingOnStatsCheck: true,
     },
   ],
   sendToShard: (guildId, payload) => {
@@ -51,11 +51,11 @@ client.lavalink = new LavalinkManager({
     username: "MusicBot",
   },
   playerOptions: {
-    defaultSearchPlatform:              "ytmsearch",
-    onDisconnect:                       { autoReconnect: true, destroyPlayer: false },
-    onEmptyQueue:                       { destroyAfterMs: 30_000 },
-    applyVolumeAsFilter:                false,
-    clientBasedPositionUpdateInterval:  100,
+    defaultSearchPlatform:             "ytmsearch",
+    onDisconnect:                      { autoReconnect: true, destroyPlayer: false },
+    onEmptyQueue:                      { destroyAfterMs: 30_000 },
+    applyVolumeAsFilter:               false,
+    clientBasedPositionUpdateInterval: 100,
   },
   queueOptions:    { maxPreviousTracks: 10 },
   advancedOptions: {
@@ -67,10 +67,10 @@ client.lavalink = new LavalinkManager({
 
 // ─── Lavalink node events ─────────────────────────────────────────────────────
 client.lavalink.nodeManager
-  .on("connect",      node         => console.log(`[Lavalink] Node "${node.id}" connected ✅`))
-  .on("error",        (node, err)  => console.error(`[Lavalink] Node "${node.id}" error:`, err.message))
-  .on("disconnect",   (node, rsn)  => console.warn(`[Lavalink] Node "${node.id}" disconnected:`, JSON.stringify(rsn)))
-  .on("reconnecting", node         => console.log(`[Lavalink] Node "${node.id}" reconnecting...`));
+  .on("connect",      (node)         => console.log(`[Lavalink] Node "${node.id}" connected ✅`))
+  .on("error",        (node, err)    => console.error(`[Lavalink] Node "${node.id}" error:`, err.message))
+  .on("disconnect",   (node, reason) => console.warn(`[Lavalink] Node "${node.id}" disconnected:`, JSON.stringify(reason)))
+  .on("reconnecting", (node)         => console.log(`[Lavalink] Node "${node.id}" reconnecting...`));
 
 // ─── Now-playing embed ────────────────────────────────────────────────────────
 function buildNowPlayingEmbed(player, track) {
@@ -83,9 +83,9 @@ function buildNowPlayingEmbed(player, track) {
     .setTitle("Now Playing")
     .setDescription(`**[${track.info.title}](${track.info.uri})**`)
     .addFields(
-      { name: "Author",       value: track.info.author || "Unknown",                                                        inline: true },
-      { name: "Duration",     value: track.info.isStream ? "🔴 LIVE" : `${formatDuration(pos)} / ${formatDuration(dur)}`,  inline: true },
-      { name: "Requested By", value: track.requester?.username || "Unknown",                                                inline: true },
+      { name: "Author",       value: track.info.author || "Unknown",                                                       inline: true },
+      { name: "Duration",     value: track.info.isStream ? "🔴 LIVE" : `${formatDuration(pos)} / ${formatDuration(dur)}`, inline: true },
+      { name: "Requested By", value: track.requester?.username || "Unknown",                                               inline: true },
       { name: "Progress",     value: bar }
     )
     .setThumbnail(track.info.artworkUrl || "");
@@ -169,7 +169,7 @@ client.lavalink
     }
   })
 
-  .on("trackEnd", player => {
+  .on("trackEnd", (player) => {
     clearNpInterval(player.guildId);
   })
 
@@ -234,7 +234,7 @@ client.lavalink
     console.warn(`[Lavalink] Player socket closed guild=${player.guildId}:`, payload);
   })
 
-  .on("queueEnd", async player => {
+  .on("queueEnd", async (player) => {
     clearNpInterval(player.guildId);
     await clearVoiceStatus(client, player.voiceChannelId);
 
@@ -258,16 +258,12 @@ for (const file of fs.readdirSync(path.join(__dirname, "events")).filter(f => f.
 
 // ─── Forward voice updates to Lavalink ───────────────────────────────────────
 // FIX: Android TV / mobile clients sometimes omit guild_id at the top level
-// of VOICE_STATE_UPDATE. It is present inside d.member.guild_id instead.
-// Normalise before forwarding so Lavalink can always route the event correctly,
-// which is why the request appeared as XXXX-XXXX (undefined) in the logs.
+// of VOICE_STATE_UPDATE. Normalise before forwarding so Lavalink can route correctly.
 client.on("raw", d => {
   if (["VOICE_STATE_UPDATE", "VOICE_SERVER_UPDATE"].includes(d.t)) {
-    if (d.d && !d.d.guild_id && d.d.member?.guild_id) {
+    if (d.d && !d.d.guild_id && d.d.member?.guild_id)
       d.d.guild_id = d.d.member.guild_id;
-    }
-    const guildId = d.d?.guild_id ?? "UNKNOWN";
-    console.log(`[Voice] ${d.t} guild=${guildId}`);
+    console.log(`[Voice] ${d.t} guild=${d.d?.guild_id ?? "UNKNOWN"}`);
   }
   client.lavalink.sendRawData(d);
 });
