@@ -81,7 +81,7 @@ module.exports = {
           { name: "Author",   value: track.info.author || "Unknown", inline: true },
           { name: "Duration", value: track.info.isStream ? "🔴 LIVE" : formatDuration(track.info.duration), inline: true }
         )
-        .setThumbnail(track.info.artworkUrl || "")],
+        .setThumbnail(track.info.artworkUrl || null)],
     });
   },
 };
