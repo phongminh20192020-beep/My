@@ -137,7 +137,10 @@ function buildNowPlayingEmbed(player, track) {
       { name: "Source",       value: sourceBadge,                                                                          inline: true },
       { name: "Progress",     value: bar }
     )
-    .setThumbnail(track.info.artworkUrl || null);
+    .setThumbnail(
+      track.info.artworkUrl?.trim() ||
+      (track.info.identifier ? `https://img.youtube.com/vi/${track.info.identifier}/mqdefault.jpg` : null)
+    );
 }
 
 function clearNpInterval(guildId) {
