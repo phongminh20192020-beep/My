@@ -25,7 +25,9 @@ function progressBar(position, duration, length = 20) {
   );
 }
 
-// ─── Spotify anonymous token ──────────────────────────────────────────────────
+// ─── Spotify Client Credentials token ────────────────────────────────────────
+// Uses SPOTIFY_CLIENT_ID + SPOTIFY_CLIENT_SECRET env vars (official API).
+// Falls back gracefully if credentials are missing.
 let _spotifyTokenCache = null;
 
 async function getSpotifyToken() {
@@ -33,31 +35,37 @@ async function getSpotifyToken() {
     return _spotifyTokenCache.token;
   }
 
-  const res = await fetch(
-    "https://open.spotify.com/get_access_token?reason=transport&productType=web_player",
-    {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept":     "application/json",
-      },
-    }
-  );
+  const clientId     = process.env.SPOTIFY_CLIENT_ID;
+  const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
+  if (!clientId || !clientSecret)
+    throw new Error("SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET env vars are not set.");
 
-  if (!res.ok) throw new Error(`Spotify anonymous token failed (${res.status})`);
+  const res = await fetch("https://accounts.spotify.com/api/token", {
+    method:  "POST",
+    headers: {
+      "Content-Type":  "application/x-www-form-urlencoded",
+      "Authorization": "Basic " + Buffer.from(`${clientId}:${clientSecret}`).toString("base64"),
+    },
+    body: "grant_type=client_credentials",
+  });
+
+  if (!res.ok) throw new Error(`Spotify token request failed (${res.status})`);
 
   const data = await res.json();
-  if (!data.accessToken) throw new Error("Spotify returned no accessToken");
+  if (!data.access_token) throw new Error("Spotify returned no access_token");
 
   _spotifyTokenCache = {
-    token:     data.accessToken,
-    expiresAt: data.accessTokenExpirationTimestampMs || (Date.now() + 3_600_000),
+    token:     data.access_token,
+    // expires_in is in seconds; subtract 60 s safety margin
+    expiresAt: Date.now() + (data.expires_in - 60) * 1000,
   };
 
-  return data.accessToken;
+  return data.access_token;
 }
 
 /**
- * Resolve a Spotify URL into a list of { query, title, artist } objects.
+ * Resolve a Spotify URL into { type, name, tracks[] }.
+ * Each track is { query, title, artist }.
  * Supports track, playlist, and album URLs.
  */
 async function resolveSpotify(url) {
@@ -81,19 +89,31 @@ async function resolveSpotify(url) {
   }
 
   if (playlistMatch) {
-    const res = await fetch(
-      `https://api.spotify.com/v1/playlists/${playlistMatch[1]}?fields=name,tracks.items(track(name,artists))`,
-      { headers }
-    );
+    // Paginate through all tracks (Spotify returns max 100 per page)
+    const id     = playlistMatch[1];
+    let   url    = `https://api.spotify.com/v1/playlists/${id}?fields=name,tracks.items(track(name,artists)),tracks.next,tracks.total`;
+    const res    = await fetch(url, { headers });
     if (!res.ok) throw new Error(`Spotify playlist fetch failed (${res.status})`);
     const d      = await res.json();
-    const tracks = (d.tracks?.items ?? [])
+
+    const items  = [...(d.tracks?.items ?? [])];
+    let   next   = d.tracks?.next;
+    while (next) {
+      const page = await fetch(next, { headers });
+      if (!page.ok) break;
+      const pd = await page.json();
+      items.push(...(pd.items ?? []));
+      next = pd.next;
+    }
+
+    const tracks = items
       .map(i => i.track)
       .filter(Boolean)
       .map(t => {
         const artist = t.artists?.[0]?.name ?? "";
         return { query: `${artist} ${t.name}`.trim(), title: t.name, artist };
       });
+
     return { type: "playlist", name: d.name, tracks };
   }
 
