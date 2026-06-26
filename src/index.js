@@ -26,13 +26,30 @@ for (const file of fs.readdirSync(path.join(__dirname, "commands")).filter(f => 
   if (cmd.data && cmd.execute) client.commands.set(cmd.data.name, cmd);
 }
 
+// ─── Source routing helpers ───────────────────────────────────────────────────
+// Spotify URLs/URIs  → lavasrc resolves them natively (spsearch / sp: prefix)
+// Everything else    → youtube-source via ytsearch / ytmsearch
+const SPOTIFY_REGEX = /^(https?:\/\/(open\.spotify\.com|spotify\.link)|spotify:)/i;
+
+/**
+ * Decide which search source to use based on the raw query.
+ *  - Spotify link/URI → "spsearch"  (LavaSrc handles metadata + playback via YouTube internally)
+ *  - Plain text query → "ytsearch"  (youtube-source direct search)
+ *  - YouTube URL      → pass as-is, no source prefix needed
+ */
+function resolveSource(query) {
+  if (SPOTIFY_REGEX.test(query))                         return "spsearch";
+  if (/^https?:\/\/(www\.)?(youtube\.com|youtu\.be)/i.test(query)) return null; // direct URL
+  return "ytmsearch"; // plain text → youtube-source (YouTube Music)
+}
+
 // ─── Lavalink ─────────────────────────────────────────────────────────────────
 client.lavalink = new LavalinkManager({
   nodes: [
     {
       id:                     "main",
-      host:                   process.env.LAVALINK_HOST || "lavalink",
-      port:                   parseInt(process.env.LAVALINK_PORT || "8080"),
+      host:                   process.env.LAVALINK_HOST || "reseau.proxy.rlwy.net",
+      port:                   parseInt(process.env.LAVALINK_PORT || "17693"),
       authorization:          process.env.LAVALINK_PASS || "Minh@2013",
       secure:                 false,
       retryAmount:            20,
@@ -51,6 +68,7 @@ client.lavalink = new LavalinkManager({
     username: "MusicBot",
   },
   playerOptions: {
+    // Default for plain-text queries — youtube-source (YouTube Music)
     defaultSearchPlatform:             "ytmsearch",
     onDisconnect:                      { autoReconnect: true, destroyPlayer: false },
     onEmptyQueue:                      { destroyAfterMs: 30_000 },
@@ -65,18 +83,23 @@ client.lavalink = new LavalinkManager({
   },
 });
 
-// ─── Push YouTube OAuth token to node via REST ────────────────────────────────
+
+// ─── Push YouTube OAuth token to youtube-source plugin ───────────────────────
+// Docs: https://github.com/lavalink-devs/youtube-source#rest-routes-plugin-only
+// Endpoint : POST /youtube
+// Body     : { refreshToken, skipInitialization?, poToken?, visitorData? }
+// Response : 204 No Content on success | 500 if token invalid or source disabled
 async function pushYouTubeOAuth(node) {
   const token = process.env.YOUTUBE_REFRESH_TOKEN;
   if (!token) {
-    console.warn(`[Lavalink] YOUTUBE_REFRESH_TOKEN not set — YouTube may fail with login errors.`);
+    console.warn("[Lavalink] YOUTUBE_REFRESH_TOKEN not set — YouTube may fall back to unauthenticated requests.");
     return;
   }
   try {
     const protocol = node.options.secure ? "https" : "http";
     const base     = `${protocol}://${node.options.host}:${node.options.port}`;
 
-    const res = await fetch(`${base}/youtube/token`, {
+    const res = await fetch(`${base}/youtube`, {
       method:  "POST",
       headers: {
         "Authorization": node.options.authorization,
@@ -85,14 +108,14 @@ async function pushYouTubeOAuth(node) {
       body: JSON.stringify({ refreshToken: token }),
     });
 
-    if (res.ok) {
-      console.log(`[Lavalink] YouTube OAuth token pushed to node "${node.id}" ✅`);
+    if (res.status === 204) {
+      console.log(`[Lavalink] YouTube OAuth token accepted by node "${node.id}" ✅`);
     } else {
       const text = await res.text();
-      console.error(`[Lavalink] Failed to push YouTube OAuth token: ${res.status} ${text}`);
+      console.error(`[Lavalink] YouTube OAuth push failed (${res.status}): ${text}`);
     }
   } catch (err) {
-    console.error(`[Lavalink] Failed to push YouTube OAuth token:`, err.message);
+    console.error("[Lavalink] YouTube OAuth push error:", err.message);
   }
 }
 
@@ -112,14 +135,23 @@ function buildNowPlayingEmbed(player, track) {
   const dur = track.info.duration;
   const bar = track.info.isStream ? "🔴 LIVE" : progressBar(pos, dur);
 
+  // Show source badge so users can tell where the track is coming from
+  const sourceName = track.info.sourceName || "unknown";
+  const sourceBadge =
+    sourceName === "spotify"  ? "🟢 Spotify"  :
+    sourceName === "youtube"  ? "🔴 YouTube"  :
+    sourceName === "youtubemusic" ? "🎵 YT Music" :
+    `📻 ${sourceName}`;
+
   return new EmbedBuilder()
-    .setColor(0xff0000)
+    .setColor(sourceName === "spotify" ? 0x1db954 : 0xff0000)
     .setTitle("Now Playing")
     .setDescription(`**[${track.info.title}](${track.info.uri})**`)
     .addFields(
       { name: "Author",       value: track.info.author || "Unknown",                                                       inline: true },
       { name: "Duration",     value: track.info.isStream ? "🔴 LIVE" : `${formatDuration(pos)} / ${formatDuration(dur)}`, inline: true },
       { name: "Requested By", value: track.requester?.username || "Unknown",                                               inline: true },
+      { name: "Source",       value: sourceBadge,                                                                          inline: true },
       { name: "Progress",     value: bar }
     )
     .setThumbnail(track.info.artworkUrl || "");
@@ -130,12 +162,16 @@ function clearNpInterval(guildId) {
   if (iv) { clearInterval(iv); client.npIntervals.delete(guildId); }
 }
 
-// ─── Autoplay ─────────────────────────────────────────────────────────────────
+// ─── Autoplay (seeds from YouTube via youtube-source) ────────────────────────
 async function handleAutoplay(player, lastTrack) {
   try {
-    const id        = lastTrack.info.identifier;
     const requester = lastTrack.requester || client.user;
-    console.log(`[Autoplay] Seeding from: "${lastTrack.info.title}"`);
+
+    // Always use a YouTube identifier for the mix seed, even if the track
+    // originally came from Spotify (LavaSrc resolves Spotify → YouTube internally,
+    // so the identifier is a YouTube video ID).
+    const id = lastTrack.info.identifier;
+    console.log(`[Autoplay] Seeding from: "${lastTrack.info.title}" (id=${id})`);
 
     const res = await player.search(
       { query: `https://www.youtube.com/watch?v=${id}&list=RD${id}`, source: "youtube" },
@@ -155,6 +191,11 @@ async function handleAutoplay(player, lastTrack) {
 }
 
 // ─── Track error retry helper ─────────────────────────────────────────────────
+// On error, fallback order:
+//   1. ytsearch  (youtube-source, no login wall)
+//   2. ytmsearch (YouTube Music via youtube-source)
+// Spotify tracks are resolved by LavaSrc to YouTube internally, so ytsearch
+// is the correct fallback for those too.
 async function searchReplacement(player, failedTrack, sources) {
   const query          = `${failedTrack.info.title} ${failedTrack.info.author || ""}`.trim();
   const targetDuration = failedTrack.info.duration || 0;
@@ -178,7 +219,7 @@ async function searchReplacement(player, failedTrack, sources) {
 client.lavalink
 
   .on("trackStart", async (player, track) => {
-    console.log(`[Lavalink] trackStart: "${track.info.title}" guild=${player.guildId}`);
+    console.log(`[Lavalink] trackStart: "${track.info.title}" source=${track.info.sourceName} guild=${player.guildId}`);
     clearNpInterval(player.guildId);
     client.errorCounts.set(player.guildId, 0);
     client.retriedTracks.delete(player.guildId);
@@ -233,10 +274,12 @@ client.lavalink
       retriedSet.add(trackKey);
 
       if (isLoginError) {
-        console.log(`[Lavalink] Login error — retrying "${track.info.title}" with fallback source`);
-        channel?.send(`⚠️ **${track.info.title}** is age/login restricted — trying another source...`).catch(() => {});
+        console.log(`[Lavalink] Login error — retrying "${track.info.title}" via youtube-source fallback`);
+        channel?.send(`⚠️ **${track.info.title}** hit a login wall — trying another source...`).catch(() => {});
       }
 
+      // Always fall back through youtube-source sources; never back to Spotify
+      // (LavaSrc Spotify tracks already resolve through YouTube under the hood).
       const sources     = isLoginError ? ["ytsearch", "ytmsearch"] : ["ytmsearch", "ytsearch"];
       const replacement = await searchReplacement(player, track, sources);
 
@@ -317,5 +360,15 @@ client.on("interactionCreate", async interaction => {
 process.on("unhandledRejection",       reason => console.error("[Process] Unhandled Rejection:", reason));
 process.on("uncaughtException",        err    => console.error("[Process] Uncaught Exception:", err));
 process.on("uncaughtExceptionMonitor", err    => console.error("[Process] Uncaught Exception Monitor:", err));
+
+// ─── Export resolveSource for use in /play command ───────────────────────────
+// Usage in your play command:
+//   const { resolveSource } = require("../index");
+//   const source = resolveSource(query);
+//   const res = await player.search(
+//     source ? { query, source } : { query },
+//     interaction.user
+//   );
+module.exports = { resolveSource };
 
 client.login(process.env.DISCORD_TOKEN);
