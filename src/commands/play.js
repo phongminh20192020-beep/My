@@ -44,8 +44,64 @@ module.exports = {
     const isSpotify = /spotify\.com\/(track|playlist|album)\//.test(query);
     const isUrl     = /^https?:\/\//.test(query);
 
+    // ── Detect if the node has LavaSrc (Spotify native support) ──────────────
+    const nodeInfo  = player.node?.info;
+    const hasLavaSrc = nodeInfo?.plugins?.some(p =>
+      p.name?.toLowerCase().includes("lavasrc") ||
+      p.name?.toLowerCase().includes("spotify")
+    ) ?? false;
+
     // ── Spotify ───────────────────────────────────────────────────────────────
     if (isSpotify) {
+
+      // ── Node has LavaSrc — pass URL directly, let the node handle everything
+      if (hasLavaSrc) {
+        const res = await player
+          .search({ query, source: "spsearch" }, interaction.user)
+          .catch(err => { console.error("[Play] LavaSrc search error:", err.message); return null; });
+
+        if (!res || res.loadType === "empty" || res.loadType === "error")
+          return interaction.editReply("❌ No results found for that Spotify link.");
+
+        if (res.loadType === "playlist") {
+          for (const track of res.tracks) player.queue.add(track);
+
+          if (!player.playing && !player.paused)
+            await player.play().catch(err => console.error("[Play] play() error:", err.message));
+
+          return interaction.editReply({
+            embeds: [
+              new EmbedBuilder()
+                .setColor(0x1db954)
+                .setTitle("Spotify Playlist Added")
+                .setDescription(`Added **${res.tracks.length}** tracks from **${res.playlist?.name || "playlist"}** to the queue.`),
+            ],
+          });
+        }
+
+        // Single track via LavaSrc
+        const track = res.tracks[0];
+        player.queue.add(track);
+
+        if (!player.playing && !player.paused)
+          await player.play().catch(err => console.error("[Play] play() error:", err.message));
+
+        return interaction.editReply({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(0x1db954)
+              .setTitle("Added to Queue (Spotify)")
+              .setDescription(`**[${track.info.title}](${track.info.uri})**`)
+              .addFields(
+                { name: "Author",   value: track.info.author || "Unknown",                                             inline: true },
+                { name: "Duration", value: track.info.isStream ? "🔴 LIVE" : formatDuration(track.info.duration),     inline: true }
+              )
+              .setThumbnail(track.info.artworkUrl || null),
+          ],
+        });
+      }
+
+      // ── No LavaSrc — resolve Spotify ourselves and search YouTube ──────────
       if (!process.env.SPOTIFY_CLIENT_ID || !process.env.SPOTIFY_CLIENT_SECRET)
         return interaction.editReply("❌ Spotify credentials are not configured. Set `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET`.");
 
@@ -60,7 +116,7 @@ module.exports = {
       if (!spotifyData?.tracks?.length)
         return interaction.editReply("❌ No tracks found in that Spotify link.");
 
-      // ── Single track ──────────────────────────────────────────────────────
+      // Single track
       if (spotifyData.type === "track") {
         const { query: ytQuery, title, artist } = spotifyData.tracks[0];
         const res = await player
@@ -91,10 +147,9 @@ module.exports = {
         });
       }
 
-      // ── Playlist / album ──────────────────────────────────────────────────
+      // Playlist / album — background queue
       const { name, tracks } = spotifyData;
 
-      // Acknowledge immediately — we're about to do a lot of work in the background
       await interaction.editReply({
         embeds: [
           new EmbedBuilder()
@@ -104,8 +159,6 @@ module.exports = {
         ],
       });
 
-      // Queue + resolve in background; do NOT await this block so the interaction
-      // reply is already sent and we're not racing Discord's 15-minute timeout.
       (async () => {
         let added = 0;
         for (const { query: ytQuery, title } of tracks) {
@@ -114,11 +167,8 @@ module.exports = {
             if (res?.tracks?.[0]) {
               player.queue.add(res.tracks[0]);
               added++;
-
-              // Start playback the moment the first track lands in the queue
-              if (added === 1 && !player.playing && !player.paused) {
+              if (added === 1 && !player.playing && !player.paused)
                 await player.play().catch(err => console.error("[Play] initial play() error:", err.message));
-              }
             }
           } catch (err) {
             console.warn(`[Play] Skipped "${title}":`, err.message);
@@ -127,7 +177,6 @@ module.exports = {
 
         console.log(`[Play] Spotify playlist "${name}": queued ${added}/${tracks.length}`);
 
-        // Edit the reply to show the final count once everything is queued
         interaction.editReply({
           embeds: [
             new EmbedBuilder()
@@ -135,7 +184,7 @@ module.exports = {
               .setTitle("✅ Playlist Queued")
               .setDescription(`Added **${added}/${tracks.length}** tracks from **${name}** to the queue.`),
           ],
-        }).catch(() => {}); // interaction token expires after 15 min; safe to ignore
+        }).catch(() => {});
       })();
 
       return;
