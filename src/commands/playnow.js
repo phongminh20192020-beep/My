@@ -39,11 +39,50 @@ module.exports = {
       if (isNew) await new Promise(r => setTimeout(r, 1000));
     }
 
-    let query           = interaction.options.getString("query");
+    let query            = interaction.options.getString("query");
     const isSpotifyTrack = /spotify\.com\/track\//.test(query);
-    const isUrl         = /^https?:\/\//.test(query);
+    const isUrl          = /^https?:\/\//.test(query);
+
+    // ── Detect if the node has LavaSrc ────────────────────────────────────────
+    const nodeInfo   = player.node?.info;
+    const hasLavaSrc = nodeInfo?.plugins?.some(p =>
+      p.name?.toLowerCase().includes("lavasrc") ||
+      p.name?.toLowerCase().includes("spotify")
+    ) ?? false;
 
     if (isSpotifyTrack) {
+      if (hasLavaSrc) {
+        // Let the node resolve it natively
+        const res = await player
+          .search({ query, source: "spsearch" }, interaction.user)
+          .catch(err => { console.error("[PlayNow] LavaSrc search error:", err.message); return null; });
+
+        if (!res?.tracks?.length || res.loadType === "empty" || res.loadType === "error")
+          return interaction.editReply("❌ No results found.");
+
+        const track = res.tracks[0];
+        player.queue.tracks.unshift(track);
+
+        if (player.playing || player.paused) {
+          await player.skip(0, false).catch(err => console.error("[PlayNow] skip failed:", err.message));
+        } else {
+          await player.play().catch(err => console.error("[PlayNow] play failed:", err.message));
+        }
+
+        return interaction.editReply({
+          embeds: [new EmbedBuilder()
+            .setColor(0x1db954)
+            .setTitle("▶ Playing Now (Spotify)")
+            .setDescription(`**[${track.info.title}](${track.info.uri})**`)
+            .addFields(
+              { name: "Author",   value: track.info.author || "Unknown", inline: true },
+              { name: "Duration", value: track.info.isStream ? "🔴 LIVE" : formatDuration(track.info.duration), inline: true }
+            )
+            .setThumbnail(track.info.artworkUrl || null)],
+        });
+      }
+
+      // No LavaSrc — resolve manually
       if (!process.env.SPOTIFY_CLIENT_ID || !process.env.SPOTIFY_CLIENT_SECRET)
         return interaction.editReply("❌ Spotify credentials are not configured.");
       try {
