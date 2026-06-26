@@ -26,23 +26,6 @@ for (const file of fs.readdirSync(path.join(__dirname, "commands")).filter(f => 
   if (cmd.data && cmd.execute) client.commands.set(cmd.data.name, cmd);
 }
 
-// ─── Source routing helpers ───────────────────────────────────────────────────
-// Spotify URLs/URIs  → lavasrc resolves them natively (spsearch / sp: prefix)
-// Everything else    → youtube-source via ytsearch / ytmsearch
-const SPOTIFY_REGEX = /^(https?:\/\/(open\.spotify\.com|spotify\.link)|spotify:)/i;
-
-/**
- * Decide which search source to use based on the raw query.
- *  - Spotify link/URI → "spsearch"  (LavaSrc handles metadata + playback via YouTube internally)
- *  - Plain text query → "ytsearch"  (youtube-source direct search)
- *  - YouTube URL      → pass as-is, no source prefix needed
- */
-function resolveSource(query) {
-  if (SPOTIFY_REGEX.test(query))                         return "spsearch";
-  if (/^https?:\/\/(www\.)?(youtube\.com|youtu\.be)/i.test(query)) return null; // direct URL
-  return "ytmsearch"; // plain text → youtube-source (YouTube Music)
-}
-
 // ─── Lavalink ─────────────────────────────────────────────────────────────────
 client.lavalink = new LavalinkManager({
   nodes: [
@@ -132,8 +115,8 @@ client.lavalink.nodeManager
 // ─── Now-playing embed ────────────────────────────────────────────────────────
 function buildNowPlayingEmbed(player, track) {
   const pos = player.position;
-  const dur = track.info.duration;
-  const bar = track.info.isStream ? "🔴 LIVE" : progressBar(pos, dur);
+  const dur = track.info.duration || 0;
+  const bar = track.info.isStream || !dur ? "🔴 LIVE" : progressBar(pos, dur);
 
   // Show source badge so users can tell where the track is coming from
   const sourceName = track.info.sourceName || "unknown";
@@ -360,15 +343,5 @@ client.on("interactionCreate", async interaction => {
 process.on("unhandledRejection",       reason => console.error("[Process] Unhandled Rejection:", reason));
 process.on("uncaughtException",        err    => console.error("[Process] Uncaught Exception:", err));
 process.on("uncaughtExceptionMonitor", err    => console.error("[Process] Uncaught Exception Monitor:", err));
-
-// ─── Export resolveSource for use in /play command ───────────────────────────
-// Usage in your play command:
-//   const { resolveSource } = require("../index");
-//   const source = resolveSource(query);
-//   const res = await player.search(
-//     source ? { query, source } : { query },
-//     interaction.user
-//   );
-module.exports = { resolveSource };
 
 client.login(process.env.DISCORD_TOKEN);
