@@ -154,7 +154,7 @@ function buildNowPlayingEmbed(player, track) {
       { name: "Source",       value: sourceBadge,                                                                          inline: true },
       { name: "Progress",     value: bar }
     )
-    .setThumbnail(track.info.artworkUrl || "");
+    .setThumbnail(track.info.artworkUrl || null);
 }
 
 function clearNpInterval(guildId) {
