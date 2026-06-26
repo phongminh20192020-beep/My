@@ -96,7 +96,10 @@ module.exports = {
                 { name: "Author",   value: track.info.author || "Unknown",                                             inline: true },
                 { name: "Duration", value: track.info.isStream ? "🔴 LIVE" : formatDuration(track.info.duration),     inline: true }
               )
-              .setThumbnail(track.info.artworkUrl || null),
+              .setThumbnail(
+                track.info.artworkUrl?.trim() ||
+                (track.info.identifier ? `https://img.youtube.com/vi/${track.info.identifier}/mqdefault.jpg` : null)
+              ),
           ],
         });
       }
@@ -142,7 +145,10 @@ module.exports = {
                 { name: "Author",   value: track.info.author || artist || "Unknown",                               inline: true },
                 { name: "Duration", value: track.info.isStream ? "🔴 LIVE" : formatDuration(track.info.duration), inline: true }
               )
-              .setThumbnail(track.info.artworkUrl || null),
+              .setThumbnail(
+                track.info.artworkUrl?.trim() ||
+                (track.info.identifier ? `https://img.youtube.com/vi/${track.info.identifier}/mqdefault.jpg` : null)
+              ),
           ],
         });
       }
@@ -231,7 +237,10 @@ module.exports = {
             { name: "Author",   value: track.info.author || "Unknown",                                             inline: true },
             { name: "Duration", value: track.info.isStream ? "🔴 LIVE" : formatDuration(track.info.duration),     inline: true }
           )
-          .setThumbnail(track.info.artworkUrl || null),
+          .setThumbnail(
+                track.info.artworkUrl?.trim() ||
+                (track.info.identifier ? `https://img.youtube.com/vi/${track.info.identifier}/mqdefault.jpg` : null)
+              ),
       ],
     });
   },
