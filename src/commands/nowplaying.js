@@ -17,20 +17,20 @@ module.exports = {
 
     const track    = player.queue.current;
     const position = player.position;
-    const duration = track.info.duration;
-    const bar      = track.info.isStream ? "🔴 LIVE" : progressBar(position, duration);
+    const duration = track.info.duration || 0;
+    const bar      = track.info.isStream || !duration ? "🔴 LIVE" : progressBar(position, duration);
 
     const embed = new EmbedBuilder()
       .setColor(0xff0000)
       .setTitle("Now Playing")
       .setDescription(`**[${track.info.title}](${track.info.uri})**`)
       .addFields(
-        { name: "Author",       value: track.info.author || "Unknown",                                                             inline: true },
-        { name: "Duration",     value: track.info.isStream ? "🔴 LIVE" : `${formatDuration(position)} / ${formatDuration(duration)}`, inline: true },
-        { name: "Requested By", value: track.requester?.username || "Unknown",                                                     inline: true },
+        { name: "Author",       value: track.info.author || "Unknown",                                                                    inline: true },
+        { name: "Duration",     value: track.info.isStream ? "🔴 LIVE" : `${formatDuration(position)} / ${formatDuration(duration)}`,     inline: true },
+        { name: "Requested By", value: track.requester?.username || "Unknown",                                                            inline: true },
         { name: "Progress",     value: bar }
       )
-      .setThumbnail(track.info.artworkUrl || "");
+      .setThumbnail(track.info.artworkUrl || null);
 
     await interaction.editReply({ embeds: [embed] });
   },
