@@ -1,7 +1,8 @@
 "use strict";
 
-const { SlashCommandBuilder, EmbedBuilder } = require("discord.js");
-const { formatDuration, resolveSpotify }    = require("../utils/helpers");
+const { SlashCommandBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle, ActionRowBuilder, ComponentType } = require("discord.js");
+const { formatDuration, resolveSpotify } = require("../utils/helpers");
+const { loadQueue, deleteQueue }         = require("../utils/queueStore");
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -40,8 +41,87 @@ module.exports = {
       if (isNew) await new Promise(r => setTimeout(r, 1000));
     }
 
-    const query     = interaction.options.getString("query");
-    const isSpotify = /spotify\.com\/(track|playlist|album)\//.test(query);
+    // If AFK mode was active, reset volume and repeat mode before playing
+    if (player.get("afk")) {
+      await player.setVolume(100).catch(() => {});
+      await player.setRepeatMode("off").catch(() => {});
+      await player.stopPlaying(true).catch(() => {});
+      player.set("afk", false);
+    }
+    if (isNew) {
+      const saved = loadQueue(interaction.guildId);
+      if (saved) {
+        const totalTracks = (saved.current ? 1 : 0) + saved.tracks.length;
+        const savedDate   = new Date(saved.savedAt).toLocaleString();
+
+        const yesBtn = new ButtonBuilder().setCustomId("restore_yes").setLabel("✅ Restore").setStyle(ButtonStyle.Success);
+        const noBtn  = new ButtonBuilder().setCustomId("restore_no").setLabel("❌ Start Fresh").setStyle(ButtonStyle.Danger);
+        const row    = new ActionRowBuilder().addComponents(yesBtn, noBtn);
+
+        const prompt = await interaction.editReply({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(0xff0000)
+              .setTitle("🎵 Restore Previous Queue?")
+              .setDescription(
+                `Found a saved queue from **${savedDate}**.\n` +
+                `**${totalTracks}** track${totalTracks !== 1 ? "s" : ""} — starting with **${saved.current?.info?.title || saved.tracks[0]?.info?.title || "Unknown"}**`
+              )
+              .setFooter({ text: "This prompt expires in 30 seconds." }),
+          ],
+          components: [row],
+        });
+
+        try {
+          const btn = await prompt.awaitMessageComponent({
+            componentType: ComponentType.Button,
+            filter: b => b.user.id === interaction.user.id,
+            time:   30_000,
+          });
+
+          await btn.deferUpdate();
+
+          if (btn.customId === "restore_yes") {
+            // Restore volume + repeat mode
+            if (saved.volume    !== undefined) await player.setVolume(saved.volume).catch(() => {});
+            if (saved.repeatMode !== undefined) await player.setRepeatMode(saved.repeatMode).catch(() => {});
+
+            // Add current track first, then the rest
+            const allTracks = [
+              ...(saved.current ? [saved.current] : []),
+              ...saved.tracks,
+            ];
+            for (const t of allTracks) player.queue.add(t);
+
+            deleteQueue(interaction.guildId);
+            await player.play().catch(err => console.error("[Restore] play() error:", err.message));
+
+            await interaction.editReply({
+              embeds: [
+                new EmbedBuilder()
+                  .setColor(0x1db954)
+                  .setTitle("✅ Queue Restored")
+                  .setDescription(`Restored **${allTracks.length}** track${allTracks.length !== 1 ? "s" : ""}. Enjoy! 🎵`),
+              ],
+              components: [],
+            });
+            return;
+          }
+
+          // User chose Start Fresh — delete saved queue and fall through to normal /play
+          deleteQueue(interaction.guildId);
+          await interaction.editReply({ embeds: [], components: [], content: "Starting fresh! Loading your track..." });
+
+        } catch {
+          // Timed out — delete and fall through
+          deleteQueue(interaction.guildId);
+          await interaction.editReply({ embeds: [], components: [], content: "Restore prompt expired — starting fresh." });
+        }
+      }
+    }
+
+    const query      = interaction.options.getString("query");
+    const isSpotify  = /spotify\.com\/(track|playlist|album)\//.test(query);
     const isUrl     = /^https?:\/\//.test(query);
 
     // ── Detect if the node has LavaSrc (Spotify native support) ──────────────
