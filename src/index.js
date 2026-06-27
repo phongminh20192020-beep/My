@@ -5,6 +5,10 @@ const { LavalinkManager } = require("lavalink-client");
 const fs   = require("fs");
 const path = require("path");
 const { formatDuration, progressBar, resolveSpotify, setVoiceStatus, clearVoiceStatus } = require("./utils/helpers");
+const { purgeExpired } = require("./utils/queueStore");
+
+// Purge expired saved queues on startup
+purgeExpired();
 
 // ─── Discord client ───────────────────────────────────────────────────────────
 const client = new Client({
@@ -51,7 +55,6 @@ client.lavalink = new LavalinkManager({
     username: "MusicBot",
   },
   playerOptions: {
-    // Default for plain-text queries — youtube-source (YouTube Music)
     defaultSearchPlatform:             "ytmsearch",
     onDisconnect:                      { autoReconnect: true, destroyPlayer: false },
     onEmptyQueue:                      { destroyAfterMs: 30_000 },
@@ -66,12 +69,7 @@ client.lavalink = new LavalinkManager({
   },
 });
 
-
 // ─── Push YouTube OAuth token to youtube-source plugin ───────────────────────
-// Docs: https://github.com/lavalink-devs/youtube-source#rest-routes-plugin-only
-// Endpoint : POST /youtube
-// Body     : { refreshToken, skipInitialization?, poToken?, visitorData? }
-// Response : 204 No Content on success | 500 if token invalid or source disabled
 async function pushYouTubeOAuth(node) {
   const token = process.env.YOUTUBE_REFRESH_TOKEN;
   if (!token) {
@@ -118,11 +116,10 @@ function buildNowPlayingEmbed(player, track) {
   const dur = track.info.duration || 0;
   const bar = track.info.isStream || !dur ? "🔴 LIVE" : progressBar(pos, dur);
 
-  // Show source badge so users can tell where the track is coming from
   const sourceName = track.info.sourceName || "unknown";
   const sourceBadge =
-    sourceName === "spotify"  ? "🟢 Spotify"  :
-    sourceName === "youtube"  ? "🔴 YouTube"  :
+    sourceName === "spotify"      ? "🟢 Spotify"  :
+    sourceName === "youtube"      ? "🔴 YouTube"  :
     sourceName === "youtubemusic" ? "🎵 YT Music" :
     `📻 ${sourceName}`;
 
@@ -148,14 +145,10 @@ function clearNpInterval(guildId) {
   if (iv) { clearInterval(iv); client.npIntervals.delete(guildId); }
 }
 
-// ─── Autoplay (seeds from YouTube via youtube-source) ────────────────────────
+// ─── Autoplay ─────────────────────────────────────────────────────────────────
 async function handleAutoplay(player, lastTrack) {
   try {
     const requester = lastTrack.requester || client.user;
-
-    // Always use a YouTube identifier for the mix seed, even if the track
-    // originally came from Spotify (LavaSrc resolves Spotify → YouTube internally,
-    // so the identifier is a YouTube video ID).
     const id = lastTrack.info.identifier;
     console.log(`[Autoplay] Seeding from: "${lastTrack.info.title}" (id=${id})`);
 
@@ -177,11 +170,6 @@ async function handleAutoplay(player, lastTrack) {
 }
 
 // ─── Track error retry helper ─────────────────────────────────────────────────
-// On error, fallback order:
-//   1. ytsearch  (youtube-source, no login wall)
-//   2. ytmsearch (YouTube Music via youtube-source)
-// Spotify tracks are resolved by LavaSrc to YouTube internally, so ytsearch
-// is the correct fallback for those too.
 async function searchReplacement(player, failedTrack, sources) {
   const query          = `${failedTrack.info.title} ${failedTrack.info.author || ""}`.trim();
   const targetDuration = failedTrack.info.duration || 0;
@@ -264,8 +252,6 @@ client.lavalink
         channel?.send(`⚠️ **${track.info.title}** hit a login wall — trying another source...`).catch(() => {});
       }
 
-      // Always fall back through youtube-source sources; never back to Spotify
-      // (LavaSrc Spotify tracks already resolve through YouTube under the hood).
       const sources     = isLoginError ? ["ytsearch", "ytmsearch"] : ["ytmsearch", "ytsearch"];
       const replacement = await searchReplacement(player, track, sources);
 
@@ -298,6 +284,12 @@ client.lavalink
   .on("queueEnd", async (player) => {
     clearNpInterval(player.guildId);
     await clearVoiceStatus(client, player.voiceChannelId);
+
+    // AFK mode — stay in channel, do nothing
+    if (player.get("afk")) {
+      console.log(`[AFK] Queue ended in guild ${player.guildId} — staying in channel (AFK mode)`);
+      return;
+    }
 
     if (player.get("autoplay")) {
       const seed = player.queue.previous[0];
