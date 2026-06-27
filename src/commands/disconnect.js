@@ -1,12 +1,13 @@
 "use strict";
 
 const { SlashCommandBuilder } = require("discord.js");
-const { clearVoiceStatus } = require("../utils/helpers");
+const { clearVoiceStatus }    = require("../utils/helpers");
+const { saveQueue }           = require("../utils/queueStore");
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("disconnect")
-    .setDescription("Clear the queue and leave the voice channel"),
+    .setDescription("Save the queue, clear and leave the voice channel"),
 
   async execute(interaction, client) {
     await interaction.deferReply();
@@ -15,8 +16,20 @@ module.exports = {
     if (!player || !player.connected)
       return interaction.editReply("I'm not in a voice channel.");
 
+    // Count tracks before saving
+    const current     = player.queue.current;
+    const trackCount  = (current ? 1 : 0) + player.queue.tracks.length;
+
+    // Save queue to disk before destroying
+    if (trackCount > 0) saveQueue(player);
+
     await clearVoiceStatus(client, player.voiceChannelId);
     await player.destroy();
-    await interaction.editReply("Disconnected and cleared the queue ✅");
+
+    await interaction.editReply(
+      trackCount > 0
+        ? `Disconnected ✅ — saved **${trackCount}** track${trackCount !== 1 ? "s" : ""} to queue. Use \`/play\` to restore.`
+        : "Disconnected and cleared the queue ✅"
+    );
   },
 };
