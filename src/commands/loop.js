@@ -2,18 +2,8 @@
 
 const { SlashCommandBuilder } = require("discord.js");
 
-// lavalink-client repeat modes: 0 = off, 1 = track, 2 = queue
-const MODES = {
-  off:   0,
-  track: 1,
-  queue: 2,
-};
-
-const LABELS = {
-  0: "Off",
-  1: "🔂 Track",
-  2: "🔁 Queue",
-};
+const MODES  = { off: 0, track: 1, queue: 2 };
+const LABELS = { off: "✖ Off", track: "🔂 Track", queue: "🔁 Queue" };
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -38,8 +28,11 @@ module.exports = {
       return interaction.editReply("Nothing is currently playing.");
 
     const mode = interaction.options.getString("mode");
-    await player.setRepeatMode(MODES[mode]);
+    player.repeatMode = MODES[mode];
 
-    await interaction.editReply(`Loop mode set to **${LABELS[MODES[mode]]}**.`);
+    if (player.queue?.utils?.setRepeatMode)       player.queue.utils.setRepeatMode(MODES[mode]);
+    else if (player.queue?.setRepeatMode)          player.queue.setRepeatMode(MODES[mode]);
+
+    await interaction.editReply(`Loop mode set to **${LABELS[mode]}**.`);
   },
 };
