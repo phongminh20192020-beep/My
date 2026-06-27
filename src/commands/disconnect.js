@@ -17,8 +17,11 @@ module.exports = {
       return interaction.editReply("I'm not in a voice channel.");
 
     // Count tracks before saving
-    const current     = player.queue.current;
-    const trackCount  = (current ? 1 : 0) + player.queue.tracks.length;
+    const current    = player.queue.current;
+    const trackCount = (current ? 1 : 0) + player.queue.tracks.length;
+
+    // Reset AFK mode
+    player.set("afk", false);
 
     // Save queue to disk before destroying
     if (trackCount > 0) saveQueue(player);
