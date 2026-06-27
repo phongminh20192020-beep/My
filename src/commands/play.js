@@ -41,10 +41,8 @@ module.exports = {
       if (isNew) await new Promise(r => setTimeout(r, 1000));
     }
 
-    // If AFK mode was active, reset volume and repeat mode before playing
+    // If AFK mode was active, clear it before playing
     if (player.get("afk")) {
-      await player.setVolume(100).catch(() => {});
-      await player.setRepeatMode("off").catch(() => {});
       await player.stopPlaying(true).catch(() => {});
       player.set("afk", false);
     }
