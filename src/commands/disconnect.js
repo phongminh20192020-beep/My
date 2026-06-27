@@ -20,10 +20,8 @@ module.exports = {
     const current    = player.queue.current;
     const trackCount = (current ? 1 : 0) + player.queue.tracks.length;
 
-    // Reset AFK mode, repeat mode and volume
+    // Reset AFK mode
     player.set("afk", false);
-    await player.setRepeatMode("off").catch(() => {});
-    await player.setVolume(100).catch(() => {});
 
     // Save queue to disk before destroying
     if (trackCount > 0) saveQueue(player);
@@ -33,7 +31,7 @@ module.exports = {
 
     await interaction.editReply(
       trackCount > 0
-        ? `Disconnected ✅ — saved **${trackCount}** track${trackCount !== 1 ? "s" : ""} to queue. Use \`/play\` to restore.`
+        ? `Disconnected ✅ — saved **${trackCount}** track${trackCount !== 1 ? "s" : ""} to queue. Use \`/restore` to restore.`
         : "Disconnected and cleared the queue ✅"
     );
   },
