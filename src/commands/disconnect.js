@@ -16,7 +16,6 @@ module.exports = {
     if (!player || !player.connected)
       return interaction.editReply("I'm not in a voice channel.");
 
-    // Count tracks before saving
     const current    = player.queue.current;
     const trackCount = (current ? 1 : 0) + player.queue.tracks.length;
 
@@ -31,7 +30,7 @@ module.exports = {
 
     await interaction.editReply(
       trackCount > 0
-        ? `Disconnected ✅ — saved **${trackCount}** track${trackCount !== 1 ? "s" : ""} to queue. Use \`/restore` to restore.`
+        ? `Disconnected ✅ — saved **${trackCount}** track${trackCount !== 1 ? "s" : ""} to queue. Use /restore to restore.`
         : "Disconnected and cleared the queue ✅"
     );
   },
