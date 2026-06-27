@@ -20,8 +20,10 @@ module.exports = {
     const current    = player.queue.current;
     const trackCount = (current ? 1 : 0) + player.queue.tracks.length;
 
-    // Reset AFK mode
+    // Reset AFK mode, repeat mode and volume
     player.set("afk", false);
+    await player.setRepeatMode("off").catch(() => {});
+    await player.setVolume(100).catch(() => {});
 
     // Save queue to disk before destroying
     if (trackCount > 0) saveQueue(player);
