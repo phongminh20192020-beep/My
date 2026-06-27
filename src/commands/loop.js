@@ -2,8 +2,11 @@
 
 const { SlashCommandBuilder } = require("discord.js");
 
-const MODES  = { off: 0, track: 1, queue: 2 };
-const LABELS = { off: "✖ Off", track: "🔂 Track", queue: "🔁 Queue" };
+const LABELS = {
+  off:   "✖ Off",
+  track: "🔂 Track",
+  queue: "🔁 Queue",
+};
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -28,10 +31,7 @@ module.exports = {
       return interaction.editReply("Nothing is currently playing.");
 
     const mode = interaction.options.getString("mode");
-    player.repeatMode = MODES[mode];
-
-    if (player.queue?.utils?.setRepeatMode)       player.queue.utils.setRepeatMode(MODES[mode]);
-    else if (player.queue?.setRepeatMode)          player.queue.setRepeatMode(MODES[mode]);
+    await player.setRepeatMode(mode);
 
     await interaction.editReply(`Loop mode set to **${LABELS[mode]}**.`);
   },
